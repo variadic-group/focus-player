@@ -1,0 +1,12 @@
+<!doctype html><html><body style="margin:0;font:14px sans-serif;background:#fff">
+<div id="log">CHAT</div>
+<audio id="ding" src="beep.wav" loop autoplay></audio>
+<script>
+// A noisy chat widget: a looping <audio> plus Web Audio pings every second.
+window.__pings = 0;
+const ctx = new AudioContext();
+setInterval(() => {
+  const o = ctx.createOscillator(); o.connect(ctx.destination);
+  o.start(); window.__pings++; o.stop(ctx.currentTime + 0.05);
+}, 1000);
+</script></body></html>

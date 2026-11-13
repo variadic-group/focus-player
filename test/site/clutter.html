@@ -1,0 +1,31 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Test sports page</title>
+<style>
+body{margin:0;font-family:sans-serif;background:#f4f4f4}
+header{height:70px;background:#c00;color:#fff;display:flex;align-items:center;padding:0 20px;font-size:24px}
+.wrap{display:flex;gap:16px;padding:16px}
+.main{transform:scale(1);overflow:hidden;position:relative;z-index:1}
+.chat{width:300px;height:500px;background:#fff;border:1px solid #ccc;padding:10px}
+.ad{width:300px;height:250px;background:repeating-linear-gradient(45deg,#fc0,#fc0 10px,#f90 10px,#f90 20px);margin-top:10px}
+#trap{position:fixed;inset:0;z-index:9999;background:transparent}
+video{width:640px;height:360px;background:#222;display:block;margin-top:10px}
+</style></head><body>
+<header>SPORTS SITE HEADER • junk nav • junk nav</header>
+<div class="wrap">
+  <div class="main">
+    <iframe id="player" width="800" height="450" style="border:4px solid #999" srcdoc="<body style='margin:0;background:linear-gradient(135deg,#0a5,#036);color:#fff;font:bold 40px sans-serif;display:flex;align-items:center;justify-content:center;height:100vh' onclick='parent.postMessage(&quot;iframe-click&quot;,&quot;*&quot;)'>EMBEDDED PLAYER</body>"></iframe>
+    <video id="vid" muted></video>
+  </div>
+  <div><div class="chat">CHAT: lorem ipsum spam spam</div><div class="ad">AD</div></div>
+</div>
+<div id="trap"></div>
+<script>
+window.__pageClicks=0; window.__popups=0; window.__iframeClicks=0;
+const realOpen=window.open;
+document.addEventListener('click',()=>{window.__pageClicks++; const w=window.open('about:blank'); if(w) window.__popups++;},true);
+addEventListener('message',e=>{if(e.data==='iframe-click')window.__iframeClicks++;});
+document.getElementById('trap').addEventListener('click',()=>{window.__trap=(window.__trap||0)+1});
+// live canvas -> video so play/pause can be tested
+const c=document.createElement('canvas');c.width=320;c.height=180;const g=c.getContext('2d');let t=0;
+setInterval(()=>{g.fillStyle='#124';g.fillRect(0,0,320,180);g.fillStyle='#fff';g.font='30px sans-serif';g.fillText('LIVE '+(t++),90,100)},100);
+const v=document.getElementById('vid');v.srcObject=c.captureStream(10);v.play();
+</script></body></html>

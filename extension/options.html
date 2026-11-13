@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Focus Player settings</title>
+  <style>
+    :root { --accent: #22a35a; }
+    body { margin: 0; font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #15181d; background: #f5f6f8; }
+    main { max-width: 660px; margin: 40px auto; padding: 0 20px; }
+    h1 { font-size: 22px; margin: 0 0 4px; display: flex; align-items: center; gap: 10px; }
+    h1 img { border-radius: 9px; }
+    p.sub { margin: 0 0 24px; color: #5b6270; }
+    section { background: #fff; border-radius: 14px; padding: 18px 20px; margin-bottom: 14px; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+    h2 { font-size: 15px; margin: 0 0 4px; }
+    .hint { color: #5b6270; font-size: 13px; margin: 4px 0 0 32px; }
+    h2 + .hint { margin-left: 0; margin-bottom: 12px; }
+    label.sw { display: flex; align-items: center; gap: 12px; cursor: pointer; font-weight: 600; }
+    input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--accent); }
+    ul { list-style: none; margin: 0; padding: 0; }
+    li { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid #eef0f3; }
+    li:first-child { border-top: 0; }
+    li span { flex: 1; }
+    .empty { color: #8a90a0; font-size: 13px; }
+    button, select { border: 0; background: #eef0f3; border-radius: 8px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+    button:hover { background: #e2e5ea; }
+    code { background: #eef0f3; padding: 1px 6px; border-radius: 5px; font-size: 13px; }
+    .row + .row { margin-top: 14px; }
+  </style>
+</head>
+<body>
+<main>
+  <h1><img src="icons/48.png" width="32" height="32" alt="">Focus Player</h1>
+  <p class="sub">Settings. Everything here stays on this computer.</p>
+
+  <section>
+    <div class="row">
+      <label class="sw"><input type="checkbox" id="blockAds"> Block ads &amp; pop-ups</label>
+      <p class="hint">Blocks well-known ad and pop-up networks everywhere. While Focus Player is active on a tab, it also closes pop-up tabs that tab tries to open (real links you click still open).</p>
+    </div>
+    <div class="row">
+      <label class="sw"><input type="checkbox" id="silence"> Silence other sounds</label>
+      <p class="hint">While focused, mutes every other sound on the page: chat beeps, ad audio, notification pings. The video you're watching keeps its sound. With Deep mode this also covers chat boxes and widgets loaded from other sites.</p>
+    </div>
+    <div class="row">
+      <label class="sw"><input type="checkbox" id="autofix"> Auto-fix frozen video</label>
+      <p class="hint">If the picture stops for about 15 seconds while locked, it jumps back to live, then restarts the player.</p>
+    </div>
+    <div class="row">
+      <label class="sw"><input type="checkbox" id="deep"> Deep mode</label>
+      <p class="hint">Lets Focus Player work inside embedded players (most sites use them): working Play/Volume buttons, exact freeze detection, staying live, and blocking pop-ups and sounds inside frames. Chrome asks for access to all sites. It only does anything in a tab where Focus Player is on.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Sites</h2>
+    <p class="hint"><b>Button</b>: shows a small "Focus video" button when a video appears. <b>Auto</b>: goes straight into focus. Set this for the current site from the toolbar popup.</p>
+    <ul id="sites"></ul>
+  </section>
+
+  <section>
+    <h2>Remembered videos</h2>
+    <p class="hint">Sites where you used "Pick the video."</p>
+    <ul id="picks"></ul>
+  </section>
+
+  <section>
+    <h2>Keyboard shortcuts</h2>
+    <p class="hint">Alt+Shift+F focus on/off · Alt+Shift+L kid lock · Alt+Shift+N next video. Change them at <code>chrome://extensions/shortcuts</code>.</p>
+  </section>
+</main>
+<script src="options.js"></script>
+</body>
+</html>

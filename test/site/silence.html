@@ -1,0 +1,9 @@
+<!doctype html><html><head><meta charset="utf-8"><title>noisy page</title></head><body style="margin:0">
+<header style="height:50px;background:#222;color:#fff">NOISY PAGE</header>
+<audio id="sitebeep" src="beep.wav" loop autoplay></audio>
+<div style="display:flex">
+  <iframe id="embed" src="pvideo.html" width="854" height="480" allow="autoplay; fullscreen"></iframe>
+  <iframe id="chat" src="chat.html" width="320" height="480"></iframe>
+</div>
+<script>window.__loads=0;window.__freeze=false;addEventListener('message',e=>{if(e.data==='player-loaded'){__loads++;if(__loads>1)__freeze=false;}});</script>
+</body></html>

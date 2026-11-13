@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Focus Player</title>
+  <link rel="stylesheet" href="overlay.css">
+</head>
+<body class="ui-locked">
+  <!-- Invisible shield over the video: taps land here, never on the website. -->
+  <div id="shield"></div>
+
+  <!-- ===== Pick mode ===== -->
+  <div id="hl"><span></span></div>
+  <div id="pickbar" class="pill-bar">
+    <span class="pulse"></span>
+    <span class="grow">Tap the game video</span>
+    <button class="pill" data-cmd="pickCancel">Cancel</button>
+  </div>
+
+  <!-- ===== Locked (kid mode) ===== -->
+  <div id="badge"><span class="dot"></span>Kid lock on</div>
+
+  <div id="bar" role="toolbar" aria-label="Player controls">
+    <button id="play" class="vid" data-cmd="play" title="Play / pause (Space)">
+      <svg class="i-pause" viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+      <svg class="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>
+      <span class="lbl">Pause</span>
+    </button>
+    <button id="mute" class="vid" data-cmd="mute" title="Mute (M)">
+      <svg class="i-on" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <svg class="i-off" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 9l5 6M21 9l-5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span class="lbl">Sound</span>
+    </button>
+    <button class="vid" data-cmd="voldown" title="Quieter (Down arrow)">
+      <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="2.5" rx="1.25"/></svg>
+      <span class="lbl">Quieter</span>
+    </button>
+    <button class="vid" data-cmd="volup" title="Louder (Up arrow)">
+      <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="2.5" rx="1.25"/><rect x="10.75" y="5.25" width="2.5" height="14" rx="1.25"/></svg>
+      <span class="lbl">Louder</span>
+    </button>
+    <span class="vid sep"></span>
+    <button id="fs" data-cmd="fullscreen" title="Full screen (F)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+      <span class="lbl">Full screen</span>
+    </button>
+    <button data-cmd="reload" title="Restart a frozen player (R)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>
+      <span class="lbl">Reload</span>
+    </button>
+    <span class="sep"></span>
+    <button class="hold" data-hold="unlock" data-verb="unlock" title="Press and hold to unlock">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="5" y="11" width="14" height="9" rx="2" fill="currentColor" stroke="none"/><path d="M8 11V8a4 4 0 0 1 7.5-2"/></svg>
+      <span class="lbl">Hold: unlock</span>
+    </button>
+    <button class="hold danger" data-hold="exit" data-verb="exit" title="Press and hold to exit">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      <span class="lbl">Hold: exit</span>
+    </button>
+  </div>
+
+  <!-- ===== Unlocked (parent mode): small pill + Tools menu ===== -->
+  <div id="parent">
+    <div id="mini" class="pill-bar">
+      <span class="grow warn">Unlocked</span>
+      <button class="pill go" data-cmd="lock" title="Lock again (Alt+Shift+L)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="5" y="11" width="14" height="9" rx="2" fill="currentColor" stroke="none"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+        Lock
+      </button>
+      <button class="pill" id="toolsBtn" title="Parent tools">Tools</button>
+      <button class="pill" data-cmd="exit" title="Exit Focus Player">Exit</button>
+    </div>
+
+    <div id="menu">
+      <div id="menuList">
+        <button class="item" data-cmd="sources"><b>Change source</b><small>Show the page, click another source, and it locks on by itself</small></button>
+        <button class="item" data-cmd="pick"><b>Pick the video myself</b><small>Tap the right player; it's remembered for this site</small></button>
+        <button class="item multi-only" data-cmd="next"><b>Next video on page</b><small>Cycle through other players here</small></button>
+        <button class="item toggle" id="t-autofix" data-cmd="autofix"><b>Auto-fix frozen video</b><small>Jump to live, restart if stuck</small><i></i></button>
+        <button class="item toggle" id="t-silence" data-cmd="silence"><b>Silence other sounds</b><small>Mutes chat beeps and ad audio; the game keeps its sound</small><i></i></button>
+        <button class="item remembered-only" data-cmd="forget"><b>Forget remembered video</b><small>Go back to automatic picking on this site</small></button>
+        <button class="item" data-cmd="diag"><b>Copy diagnostics</b><small>A short report to paste if something isn't working</small></button>
+        <button class="item" id="openOptions"><b>All settings</b><small>Deep mode, Button/Auto sites, ad blocking, remembered videos</small></button>
+      </div>
+      <div id="diagBox">
+        <textarea id="diagText" readonly spellcheck="false"></textarea>
+        <div class="row">
+          <span id="diagMsg" class="grow"></span>
+          <button class="pill go" id="diagCopy">Copy</button>
+          <button class="pill" id="diagClose">Back</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Focus button shown on Button/Auto sites when a video appears ===== -->
+  <div id="suggest" class="pill-bar">
+    <button class="pill go big" data-cmd="focusNow" title="Watch this video in Focus Player (Alt+Shift+F)">
+      <svg viewBox="0 0 24 24"><path fill="currentColor" d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>
+      Focus video
+    </button>
+    <span class="grow" id="suggestLabel"></span>
+    <button class="pill icon" data-cmd="dismiss" title="Not on this page">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+
+  <!-- ===== Waiting / Change source pill ===== -->
+  <div id="wait" class="pill-bar">
+    <span class="spinner"></span>
+    <span class="grow" id="waitText">Waiting for the video to start…</span>
+    <button class="pill go sources-only" data-cmd="done" title="Lock on to the player that's there now">Done</button>
+    <button class="pill" data-cmd="pick">Pick it</button>
+    <button class="pill" data-cmd="exit">Close</button>
+  </div>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <script src="overlay.js"></script>
+</body>
+</html>

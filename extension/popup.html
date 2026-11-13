@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Focus Player</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <img src="icons/48.png" alt="" width="36" height="36">
+    <div class="who">
+      <h1>Focus Player</h1>
+      <p id="status">Checking this page…</p>
+    </div>
+    <button id="settings" class="icon" title="All settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </button>
+  </header>
+
+  <button id="primary" class="primary" disabled>Focus the video</button>
+  <div class="row">
+    <button id="pick" class="secondary" disabled>Pick the video</button>
+    <button id="sources" class="secondary" disabled>Change source</button>
+  </div>
+
+  <section id="siteBox">
+    <div class="label">On <b id="host">this site</b></div>
+    <div class="seg" id="siteMode" role="radiogroup">
+      <button data-v="off" role="radio">Off</button>
+      <button data-v="suggest" role="radio">Button</button>
+      <button data-v="auto" role="radio">Auto</button>
+    </div>
+    <p class="hint" id="siteHint"></p>
+  </section>
+
+  <section class="toggles">
+    <label class="tg"><span><b>Block ads &amp; pop-ups</b><small>Ad networks, pop-up windows and pop-up tabs</small></span><input type="checkbox" id="blockAds"><i></i></label>
+    <label class="tg"><span><b>Silence other sounds</b><small>Chat beeps and ad audio. The game keeps its sound</small></span><input type="checkbox" id="silence"><i></i></label>
+    <label class="tg"><span><b>Auto-fix frozen video</b><small>Jump back to live, restart if stuck</small></span><input type="checkbox" id="autofix"><i></i></label>
+    <label class="tg"><span><b>Deep mode</b><small>Works inside embedded players. Asks for access to all sites</small></span><input type="checkbox" id="deep"><i></i></label>
+  </section>
+
+  <footer><kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> focus · <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd> kid lock</footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+<!doctype html><html><head><meta charset="utf-8"><title>sources</title></head><body style="margin:0;font-family:sans-serif">
+<header style="height:50px;background:#036;color:#fff">GAME PAGE</header>
+<div style="padding:10px"><button id="s2" style="font-size:20px;padding:10px 20px;margin-top:80px" onclick="document.getElementById('main').src='player.html?s=2'">Source 2</button>
+<button id="s3" style="font-size:20px;padding:10px 20px" onclick="const o=document.getElementById('main');const n=document.createElement('iframe');n.id='alt';n.src='player.html?s=3';n.width=854;n.height=480;n.allowFullscreen=true;o.replaceWith(n)">Source 3</button></div>
+<iframe id="main" src="player.html?s=1" width="854" height="480" allowfullscreen></iframe>
+</body></html>

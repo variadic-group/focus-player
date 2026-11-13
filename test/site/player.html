@@ -1,0 +1,9 @@
+<!doctype html><html><body style="margin:0;background:#036;overflow:hidden">
+<canvas id="c" width="640" height="360" style="width:100vw;height:100vh;display:block"></canvas>
+<script>
+parent.postMessage('player-loaded','*');
+const g=document.getElementById('c').getContext('2d');let t=0;
+setInterval(()=>{ if(parent.__freeze) return; t++;
+  g.fillStyle='#036';g.fillRect(0,0,640,360);g.fillStyle='#2fd17a';g.fillRect((t*9)%600,150,40,40);
+  g.fillStyle='#fff';g.font='bold 36px sans-serif';g.fillText('FAKE LIVE GAME '+t,140,90);},100);
+</script></body></html>

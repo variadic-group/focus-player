@@ -1,0 +1,52 @@
+:root { --bg: #111419; --card: #1a1f27; --line: rgba(255, 255, 255, 0.08); --text: #f2f4f7; --muted: #9aa3b2; --accent: #2fd17a; --accent-ink: #062b16; }
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  width: 340px; padding: 14px; background: var(--bg); color: var(--text);
+  font: 500 13px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+button { font: inherit; color: inherit; border: 0; cursor: pointer; }
+button:disabled { opacity: 0.4; cursor: default; }
+
+header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+header img { border-radius: 9px; }
+.who { flex: 1; min-width: 0; }
+h1 { font-size: 15px; margin: 0; }
+#status { margin: 2px 0 0; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#status.good { color: var(--accent); }
+.icon { width: 32px; height: 32px; border-radius: 9px; background: transparent; display: grid; place-items: center; color: var(--muted); }
+.icon:hover { background: var(--card); color: var(--text); }
+.icon svg { width: 18px; height: 18px; }
+
+.primary {
+  width: 100%; height: 46px; border-radius: 12px; background: var(--accent); color: var(--accent-ink);
+  font-weight: 700; font-size: 15px;
+}
+.primary.exit { background: #2a303a; color: var(--text); }
+.row { display: flex; gap: 8px; margin: 8px 0 12px; }
+.secondary { flex: 1; height: 36px; border-radius: 10px; background: var(--card); font-weight: 600; }
+.secondary:not(:disabled):hover { background: #232a34; }
+
+section { background: var(--card); border-radius: 12px; padding: 12px; margin-bottom: 10px; }
+.label { margin-bottom: 8px; color: var(--muted); }
+.label b { color: var(--text); }
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); background: #0d1014; border-radius: 10px; padding: 3px; gap: 3px; }
+.seg button { height: 30px; border-radius: 8px; background: transparent; font-weight: 600; color: var(--muted); }
+.seg button.on { background: #2a303a; color: var(--text); }
+.seg button[data-v="auto"].on, .seg button[data-v="suggest"].on { background: var(--accent); color: var(--accent-ink); }
+.hint { margin: 8px 0 0; color: var(--muted); font-size: 12px; }
+
+.toggles { padding: 4px 12px; }
+.tg { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); cursor: pointer; position: relative; }
+.tg:first-child { border-top: 0; }
+.tg span { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.tg small { color: var(--muted); font-size: 11.5px; }
+.tg input { position: absolute; opacity: 0; pointer-events: none; }
+.tg i { flex: none; width: 36px; height: 22px; border-radius: 11px; background: #39414d; position: relative; transition: background 0.15s; }
+.tg i::after { content: ''; position: absolute; left: 3px; top: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+.tg input:checked + i { background: var(--accent); }
+.tg input:checked + i::after { transform: translateX(14px); }
+.tg input:focus-visible + i { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+footer { color: var(--muted); font-size: 11.5px; text-align: center; margin-top: 4px; }
+kbd { font: inherit; background: var(--card); border-radius: 4px; padding: 0 4px; }

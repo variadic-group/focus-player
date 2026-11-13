@@ -1,0 +1,7 @@
+<!doctype html><html><head><meta charset="utf-8"><title>pop-up page</title></head><body style="margin:0;font:16px sans-serif">
+<header style="height:50px;background:#600;color:#fff">POP-UP TEST</header>
+<p style="position:relative;z-index:2;margin:20px"><a id="real" href="ad.html" target="_blank">A real link that opens a new tab</a></p>
+<iframe id="player" src="player.html" width="854" height="480" allowfullscreen style="position:relative;z-index:2"></iframe>
+<!-- classic pop-under trick: an invisible page-sized link -->
+<a id="trap" href="ad.html?popunder" target="_blank" style="position:fixed;inset:0;z-index:1"></a>
+</body></html>

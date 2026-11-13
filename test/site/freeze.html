@@ -1,0 +1,9 @@
+<!doctype html><html><head><meta charset="utf-8"><title>freeze test</title>
+<style>body{margin:0;font-family:sans-serif}header{height:60px;background:#c00;color:#fff}.chat{position:absolute;right:0;top:60px;width:280px;height:600px;background:#eee}</style></head>
+<body><header>HEADER</header><div id="box"><iframe id="player" src="player.html" width="800" height="450"></iframe></div><div class="chat">CHAT</div>
+<script>
+window.__loads=0; window.__freeze=false; window.__pageClicks=0;
+addEventListener('message',e=>{ if(e.data==='player-loaded'){ __loads++; if(__loads>1) __freeze=false; }});
+document.addEventListener('click',()=>{__pageClicks++; window.open('about:blank');},true);
+window.swapPlayer=()=>{ document.getElementById('player').remove(); const f=document.createElement('iframe'); f.id='player2'; f.src='player.html'; f.width=820; f.height=460; document.getElementById('box').appendChild(f); };
+</script></body></html>
