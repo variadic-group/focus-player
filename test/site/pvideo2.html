@@ -1,7 +1,0 @@
-<!doctype html><html><body style="margin:0;background:#000">
-<video id="v" src="clip.webm" muted loop playsinline style="width:100%;height:100vh"></video>
-<script>
-// Not autoplaying: starts paused. Also lets the test page pause it once, like a player hiccup.
-const v=document.getElementById('v');
-setInterval(()=>{ if(parent.__pauseOnce && !v.paused){ parent.__pauseOnce=false; v.pause(); } },200);
-</script></body></html>

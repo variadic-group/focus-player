@@ -1,80 +1,29 @@
 {
   "manifest_version": 3,
   "name": "Focus Player",
-  "version": "2.1.0",
-  "description": "Watch any web video distraction-free: it fills the tab, the rest of the page disappears, a kid lock catches stray taps, and ads, pop-ups and stray sounds are blocked.",
+  "version": "3.0.0",
+  "description": "Theater mode for every website. Fill the window with any video, control speed, pop it out, skip to live, and block pop-ups.",
   "minimum_chrome_version": "116",
-  "permissions": [
-    "activeTab",
-    "scripting",
-    "storage",
-    "declarativeNetRequest"
-  ],
-  "optional_host_permissions": [
-    "<all_urls>"
-  ],
-  "background": {
-    "service_worker": "background.js"
-  },
+  "permissions": ["activeTab", "scripting", "storage", "declarativeNetRequest"],
+  "optional_host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
   "action": {
     "default_title": "Focus Player",
     "default_popup": "popup.html",
-    "default_icon": {
-      "16": "icons/16.png",
-      "32": "icons/32.png",
-      "48": "icons/48.png",
-      "128": "icons/128.png"
-    }
+    "default_icon": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" }
   },
   "options_page": "options.html",
-  "icons": {
-    "16": "icons/16.png",
-    "32": "icons/32.png",
-    "48": "icons/48.png",
-    "128": "icons/128.png"
-  },
+  "icons": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" },
   "commands": {
-    "toggle-focus": {
-      "suggested_key": {
-        "default": "Alt+Shift+F"
-      },
-      "description": "Focus the video / exit"
-    },
-    "toggle-lock": {
-      "suggested_key": {
-        "default": "Alt+Shift+L"
-      },
-      "description": "Kid lock on / off"
-    },
-    "next-player": {
-      "suggested_key": {
-        "default": "Alt+Shift+N"
-      },
-      "description": "Switch to the next video on the page"
-    },
-    "reload-player": {
-      "description": "Restart a frozen player"
-    }
+    "theater": { "suggested_key": { "default": "Alt+Shift+F" }, "description": "Theater mode on / off" },
+    "pip": { "suggested_key": { "default": "Alt+Shift+P" }, "description": "Picture-in-picture" },
+    "faster": { "suggested_key": { "default": "Alt+Shift+Period" }, "description": "Faster" },
+    "slower": { "suggested_key": { "default": "Alt+Shift+Comma" }, "description": "Slower" },
+    "reset-speed": { "description": "Normal speed" },
+    "next-video": { "description": "Next video on the page" },
+    "reload-player": { "description": "Reload the player" },
+    "fill": { "description": "Zoom to fill" }
   },
-  "declarative_net_request": {
-    "rule_resources": [
-      {
-        "id": "ads",
-        "enabled": true,
-        "path": "rules/ads.json"
-      }
-    ]
-  },
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "overlay.html",
-        "overlay.js",
-        "overlay.css"
-      ],
-      "matches": [
-        "<all_urls>"
-      ]
-    }
-  ]
+  "declarative_net_request": { "rule_resources": [{ "id": "ads", "enabled": true, "path": "rules/ads.json" }] },
+  "web_accessible_resources": [{ "resources": ["ui.html", "ui.js", "ui.css"], "matches": ["<all_urls>"] }]
 }

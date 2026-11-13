@@ -1,0 +1,15 @@
+<!doctype html><html><body style="margin:0;background:#000">
+<video id="v" muted playsinline style="width:100%;height:100vh"></video>
+<script>
+// A real "live" stream as far as the browser is concerned: Media Source with no fixed length
+// (duration = Infinity), the way HLS/DASH players present live video.
+const v = document.getElementById('v');
+const ms = new MediaSource();
+v.src = URL.createObjectURL(ms);
+ms.addEventListener('sourceopen', async () => {
+  const sb = ms.addSourceBuffer('video/webm; codecs="vp8"');
+  const buf = await (await fetch('clip.webm')).arrayBuffer();
+  sb.addEventListener('updateend', () => { ms.duration = Infinity; v.play().catch(() => {}); }, { once: true });
+  sb.appendBuffer(buf);
+});
+</script></body></html>

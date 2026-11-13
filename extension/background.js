@@ -1,12 +1,12 @@
 // Focus Player — background service worker.
 //
 // Default reach: only the tab you act on (activeTab), only when you click or press a shortcut.
-// Optional reach you approve yourself in Chrome's prompt:
-//   - Button/Auto on a site  -> access to that one site
-//   - Deep mode              -> access to all sites (only used in tabs where Focus Player is on)
+// Optional reach you approve in Chrome's own prompt:
+//   - Button / Always on a site     -> that one site
+//   - Control embedded players      -> all sites (used only in tabs where theater mode is on,
+//                                      or when you press a Focus Player button or shortcut)
 
-// ---------------------------------------------------------------- tab state
-// Kept in session storage so it survives the service worker going to sleep.
+// ---------------------------------------------------------------- tab state (survives the worker sleeping)
 const modeCache = new Map();
 
 async function getMode(tabId) {
@@ -25,21 +25,25 @@ async function setMode(tabId, mode) {
   else await chrome.storage.session.set({ [k]: mode });
 }
 
-const frameInfo = new Map(); // tabId -> { frames:Set<frameId>, main:frameId|null, silenced:Set<frameId> }
+const frameInfo = new Map(); // tabId -> { frames:Set, main:frameId|null, silenced:Set }
 function fi(tabId) {
   let t = frameInfo.get(tabId);
   if (!t) frameInfo.set(tabId, (t = { frames: new Set(), main: null, silenced: new Set() }));
   return t;
 }
 
-const isActive = (m) => m && m !== 'off';
+async function deepAllowed() {
+  const { deep } = await chrome.storage.local.get('deep');
+  if (!deep) return false;
+  return chrome.permissions.contains({ origins: ['<all_urls>'] });
+}
 
-// ---------------------------------------------------------------- running actions in a tab
+// ---------------------------------------------------------------- running content-script actions
 async function runInTab(tabId, action) {
   await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
   const [r] = await chrome.scripting.executeScript({
     target: { tabId },
-    func: (a) => (a === 'info' ? window.__focusPlayer.info() : window.__focusPlayer.handle(a)),
+    func: (a) => window.__focusPlayer.handle(a),
     args: [action],
   });
   return r && r.result;
@@ -54,14 +58,110 @@ async function run(tab, action) {
   }
 }
 
-async function deepAllowed() {
-  const { deep } = await chrome.storage.local.get('deep');
-  if (!deep) return false;
-  return chrome.permissions.contains({ origins: ['<all_urls>'] });
+// ---------------------------------------------------------------- video commands (run inside the frame that has the video)
+// Runs in the page. Finds the video Focus Player is showing (or the biggest one) and acts on it.
+function pageVideoCommand(cmd, arg) {
+  const vids = [];
+  const walk = (root) => {
+    root.querySelectorAll('video').forEach((v) => vids.push(v));
+    root.querySelectorAll('*').forEach((el) => el.shadowRoot && walk(el.shadowRoot));
+  };
+  walk(document);
+  let v = null;
+  let score = 0;
+  for (const x of vids) {
+    const r = x.getBoundingClientRect();
+    let s = r.width * r.height;
+    if (!s) continue;
+    if (!x.paused) s *= 3;
+    if (x.readyState >= 2) s *= 1.5;
+    if (x.muted && x.loop) s *= 0.3;
+    if (x.hasAttribute('data-fp-target')) s *= 100; // the one Focus Player is showing always wins
+    if (s > score) { score = s; v = x; }
+  }
+  if (!v) return { ok: false, error: 'no-video' };
+  const STEPS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4];
+  const lag = () => {
+    try {
+      const s = v.seekable;
+      if (!isFinite(v.duration) && s && s.length) {
+        const e = s.end(s.length - 1);
+        if (isFinite(e)) return e - v.currentTime;
+      }
+    } catch (_) {}
+    return null;
+  };
+  const out = () => ({
+    ok: true, score, rate: v.playbackRate, paused: v.paused, ended: v.ended, lag: lag(),
+    fill: v.style.objectFit === 'cover', pip: !!document.pictureInPictureElement,
+  });
+  switch (cmd) {
+    case 'speed': v.playbackRate = Math.min(16, Math.max(0.0625, Number(arg) || 1)); break;
+    case 'faster': { const c = v.playbackRate; const n = STEPS.find((s) => s > c + 0.001); if (n) v.playbackRate = n; break; }
+    case 'slower': { const c = v.playbackRate; const n = [...STEPS].reverse().find((s) => s < c - 0.001); if (n) v.playbackRate = n; break; }
+    case 'reset-speed': v.playbackRate = 1; break;
+    case 'play': v.play().catch(() => {}); break;
+    case 'jumplive': {
+      const l = lag();
+      if (l != null && l > 3) v.currentTime = v.seekable.end(v.seekable.length - 1) - 2;
+      v.play().catch(() => {});
+      break;
+    }
+    case 'fill':
+      if (!v.hasAttribute('data-fp-target')) {
+        if (arg) v.style.setProperty('object-fit', 'cover', 'important');
+        else v.style.removeProperty('object-fit');
+      }
+      break;
+    case 'pip':
+      return (async () => {
+        try {
+          if (document.pictureInPictureElement) await document.exitPictureInPicture();
+          else {
+            v.disablePictureInPicture = false;
+            await v.requestPictureInPicture();
+          }
+          return out();
+        } catch (e) {
+          return { ok: false, error: 'pip', detail: String((e && e.message) || e) };
+        }
+      })();
+  }
+  return out();
 }
 
-// ---------------------------------------------------------------- in-page guards (MAIN world)
-// While active: window.open and scripted target=_blank link clicks do nothing.
+async function videoCommand(tabId, cmd, arg, frameId) {
+  arg = arg === undefined ? null : arg; // executeScript can't pass `undefined`
+  let target = frameId;
+  if (target == null) {
+    let results = [];
+    try {
+      results = await chrome.scripting.executeScript({ target: { tabId, allFrames: await deepAllowed() }, func: pageVideoCommand, args: ['state', null] });
+    } catch (_) {
+      try {
+        results = await chrome.scripting.executeScript({ target: { tabId }, func: pageVideoCommand, args: ['state', null] });
+      } catch (e) {
+        return { ok: false, error: 'no-access' };
+      }
+    }
+    let best = null;
+    for (const r of results) if (r.result && r.result.ok && (!best || r.result.score > best.result.score)) best = r;
+    if (!best) return { ok: false, error: 'no-video' };
+    if (cmd === 'state') return { ...best.result, frameId: best.frameId };
+    target = best.frameId;
+  }
+  try {
+    const [r] = await chrome.scripting.executeScript({ target: { tabId, frameIds: [target] }, func: pageVideoCommand, args: [cmd, arg] });
+    const res = (r && r.result) || { ok: false, error: 'no-video' };
+    if (!res.ok && res.error === 'no-video' && frameId != null) return videoCommand(tabId, cmd, arg, null);
+    return { ...res, frameId: target };
+  } catch (_) {
+    if (frameId != null) return videoCommand(tabId, cmd, arg, null);
+    return { ok: false, error: 'no-access' };
+  }
+}
+
+// ---------------------------------------------------------------- in-page guards while in theater mode (MAIN world)
 function popupGuard(on) {
   const KEY = '__fpPopupGuard';
   const w = window;
@@ -74,10 +174,7 @@ function popupGuard(on) {
       return null;
     };
     HTMLAnchorElement.prototype.click = function () {
-      if (String(this.target || '').toLowerCase() === '_blank') {
-        console.info('[Focus Player] blocked a pop-up link');
-        return;
-      }
+      if (String(this.target || '').toLowerCase() === '_blank') return;
       return origClick.call(this);
     };
   } else if (!on && w[KEY]) {
@@ -87,8 +184,7 @@ function popupGuard(on) {
   }
 }
 
-// While focused: every sound in this frame except the chosen player is muted,
-// and Web Audio blips (chat pings, notification beeps) are swallowed.
+// Mutes every other sound in the frame (ads, chat pings) while the video you're watching keeps its sound.
 function silencer(on) {
   const KEY = '__fpSilencer';
   const w = window;
@@ -127,26 +223,22 @@ async function applyGuard(tabId, on) {
   } catch (_) {
     try {
       await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN', func: popupGuard, args: [on] });
-    } catch (e) {
-      console.warn('Focus Player: pop-up guard not applied:', e && e.message);
-    }
+    } catch (e) {}
   }
 }
 
-// Silence the top page always; with Deep mode also every other frame except the one playing the game.
-let silenceTimer = new Map();
+const silenceTimers = new Map();
 function scheduleSilence(tabId) {
-  clearTimeout(silenceTimer.get(tabId));
-  silenceTimer.set(tabId, setTimeout(() => applySilence(tabId), 150));
+  clearTimeout(silenceTimers.get(tabId));
+  silenceTimers.set(tabId, setTimeout(() => applySilence(tabId), 150));
 }
 
 async function applySilence(tabId) {
   const mode = await getMode(tabId);
   const { silence } = await chrome.storage.local.get('silence');
-  const want = silence !== false && mode === 'focus';
   const t = fi(tabId);
   const wanted = new Set();
-  if (want) {
+  if (silence !== false && mode === 'theater') {
     wanted.add(0);
     if (t.main != null && (await deepAllowed())) for (const f of t.frames) if (f !== t.main && f !== 0) wanted.add(f);
   }
@@ -167,25 +259,23 @@ async function applySilence(tabId) {
 }
 
 async function injectAgents(tabId) {
-  if ((await getMode(tabId)) !== 'focus' || !(await deepAllowed())) return;
+  if ((await getMode(tabId)) !== 'theater' || !(await deepAllowed())) return;
   try {
     await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: ['agent.js'] });
-  } catch (e) {
-    console.warn('Focus Player: deep mode could not reach every frame:', e && e.message);
-  }
+  } catch (_) {}
   applyGuard(tabId, true);
 }
 
 async function setBadge(tabId, mode) {
-  const text = { focus: 'ON', wait: '…', armed: '', suggest: '▶', pick: 'PICK' }[mode] || '';
+  const text = { theater: 'ON', wait: '…', suggest: '▶', pick: '•' }[mode] || '';
   try {
-    await chrome.action.setBadgeBackgroundColor({ tabId, color: '#22a35a' });
+    await chrome.action.setBadgeBackgroundColor({ tabId, color: '#1f9d55' });
     await chrome.action.setBadgeText({ tabId, text });
   } catch (_) {}
 }
 
-// ---------------------------------------------------------------- freeze check without Deep mode
-// Compares a 48x27 grey thumbnail of the visible tab with the previous one. Kept in memory only.
+// ---------------------------------------------------------------- frozen-picture check (no embedded access)
+// Compares a 48x27 grey thumbnail of the visible tab with the previous one. In memory only.
 const lastThumb = new Map();
 const TW = 48;
 const TH = 27;
@@ -210,36 +300,26 @@ async function frameDiff(tab) {
   return { diff: sum / grey.length };
 }
 
-// ---------------------------------------------------------------- ad networks (declarativeNetRequest)
+// ---------------------------------------------------------------- ads & pop-ups
 async function syncAdBlock() {
   const { blockAds } = await chrome.storage.local.get('blockAds');
-  const on = blockAds !== false;
   try {
-    await chrome.declarativeNetRequest.updateEnabledRulesets(on ? { enableRulesetIds: ['ads'] } : { disableRulesetIds: ['ads'] });
-  } catch (e) {
-    console.warn('Focus Player: could not update ad rules:', e && e.message);
-  }
+    await chrome.declarativeNetRequest.updateEnabledRulesets(blockAds !== false ? { enableRulesetIds: ['ads'] } : { disableRulesetIds: ['ads'] });
+  } catch (_) {}
 }
 
-// ---------------------------------------------------------------- pop-up tab blocker
-// A tab opened by a page where Focus Player is active gets closed straight away,
-// unless you just clicked (or right-clicked) a real link that opens a new tab.
-const allowTabUntil = new Map();
-let allowOwnTabsUntil = 0; // our own Settings tab must never be mistaken for a pop-up
-
+// In theater mode the page is hidden, so a new tab that the page opens right after a click
+// inside it (the classic "click anywhere" pop-up) is closed. Tabs you open yourself are untouched.
+let allowOwnTabsUntil = 0;
+const lastPageClick = new Map(); // tabId -> time of the last click inside the page or player
 chrome.tabs.onCreated.addListener(async (tab) => {
   const opener = tab.openerTabId;
-  if (opener == null) return;
-  if (!isActive(await getMode(opener))) return;
+  if (opener == null || Date.now() < allowOwnTabsUntil) return;
+  if ((await getMode(opener)) !== 'theater') return;
+  await new Promise((r) => setTimeout(r, 300)); // the "you clicked" note can arrive just after the tab
+  if (Date.now() - (lastPageClick.get(opener) || 0) > 3000) return;
   const { blockAds } = await chrome.storage.local.get('blockAds');
   if (blockAds === false) return;
-  if (Date.now() < allowOwnTabsUntil) return;
-  // The "you clicked a real link" note from the page can arrive a moment after the tab does.
-  await new Promise((r) => setTimeout(r, 250));
-  if ((allowTabUntil.get(opener) || 0) > Date.now()) {
-    allowTabUntil.delete(opener);
-    return;
-  }
   try {
     await chrome.tabs.remove(tab.id);
   } catch (_) {
@@ -249,15 +329,22 @@ chrome.tabs.onCreated.addListener(async (tab) => {
   chrome.tabs.sendMessage(opener, { fp: 'blocked-tab' }, { frameId: 0 }).catch(() => {});
 });
 
-// ---------------------------------------------------------------- Button / Auto sites
+function openOwn(url) {
+  allowOwnTabsUntil = Date.now() + 4000;
+  if (url) chrome.tabs.create({ url });
+  else chrome.runtime.openOptionsPage();
+}
+
+// ---------------------------------------------------------------- Button / Always sites
 async function migrate() {
-  const { autoSites, siteModes } = await chrome.storage.local.get(['autoSites', 'siteModes']);
-  if (autoSites && autoSites.length && !siteModes) {
+  const s = await chrome.storage.local.get(['autoSites', 'siteModes', 'autofix', 'recover']);
+  if (s.autoSites && s.autoSites.length && !s.siteModes) {
     const m = {};
-    for (const o of autoSites) m[o] = 'auto';
+    for (const o of s.autoSites) m[o] = 'auto';
     await chrome.storage.local.set({ siteModes: m });
   }
-  if (autoSites) await chrome.storage.local.remove('autoSites');
+  if (s.autofix === false && s.recover === undefined) await chrome.storage.local.set({ recover: false });
+  await chrome.storage.local.remove(['autoSites', 'autofix', 'lockStyle']);
 }
 
 async function syncSiteScripts() {
@@ -284,11 +371,11 @@ async function setup() {
 chrome.runtime.onInstalled.addListener(setup);
 chrome.runtime.onStartup.addListener(setup);
 
-chrome.storage.onChanged.addListener(async (ch, area) => {
+chrome.storage.onChanged.addListener((ch, area) => {
   if (area !== 'local') return;
   if ('siteModes' in ch) syncSiteScripts();
   if ('blockAds' in ch) syncAdBlock();
-  if ('silence' in ch || 'deep' in ch) for (const [tabId, m] of modeCache) if (m === 'focus') scheduleSilence(tabId);
+  if ('silence' in ch || 'deep' in ch) for (const [tabId, m] of modeCache) if (m === 'theater') scheduleSilence(tabId);
 });
 
 // ---------------------------------------------------------------- message hub
@@ -296,15 +383,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg) return;
 
   if (msg.fp === 'open-options') {
-    allowOwnTabsUntil = Date.now() + 4000;
-    chrome.runtime.openOptionsPage();
+    openOwn();
+    sendResponse({});
+    return;
+  }
+  if (msg.fp === 'open-shortcuts') {
+    openOwn('chrome://extensions/shortcuts');
     sendResponse({});
     return;
   }
 
-  // From the toolbar popup (not a tab).
+  // From the toolbar popup.
   if (msg.fp === 'popup') {
-    runInTab(msg.tabId, msg.action).then(
+    const p = msg.action === 'pip' ? videoCommand(msg.tabId, 'pip') : runInTab(msg.tabId, msg.action);
+    p.then(
       (info) => sendResponse({ ok: true, info }),
       (e) => sendResponse({ ok: false, error: String((e && e.message) || e) })
     );
@@ -321,15 +413,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const prev = await getMode(tabId);
         await setMode(tabId, msg.mode);
         setBadge(tabId, msg.mode);
-        if (isActive(msg.mode) !== isActive(prev) || msg.mode === 'focus') applyGuard(tabId, isActive(msg.mode));
-        if (msg.mode === 'focus') injectAgents(tabId);
-        if (msg.mode !== 'focus') fi(tabId).main = null;
+        const on = msg.mode === 'theater';
+        if (on !== (prev === 'theater')) applyGuard(tabId, on);
+        if (on) injectAgents(tabId);
+        else fi(tabId).main = null;
         if (msg.mode === 'off') lastThumb.delete(tabId);
         scheduleSilence(tabId);
         sendResponse({});
       })();
       return true;
     }
+    case 'video':
+      videoCommand(tabId, msg.cmd, msg.arg, msg.frameId).then(sendResponse);
+      return true;
     case 'main-frame':
       fi(tabId).main = msg.frameId;
       scheduleSilence(tabId);
@@ -342,7 +438,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     case 'agent-report':
       if (sender.frameId === 0) return;
       (async () => {
-        if ((await getMode(tabId)) !== 'focus') return sendResponse({ stop: true });
+        if ((await getMode(tabId)) !== 'theater') return sendResponse({ stop: true });
         const t = fi(tabId);
         if (!t.frames.has(sender.frameId)) {
           t.frames.add(sender.frameId);
@@ -352,12 +448,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         sendResponse({});
       })();
       return true;
-    case 'agent-cmd':
-      chrome.tabs.sendMessage(tabId, { fp: 'agent-cmd', cmd: msg.cmd }, { frameId: msg.frameId }).catch(() => {});
-      sendResponse({});
-      return;
-    case 'allow-next-tab':
-      allowTabUntil.set(tabId, Date.now() + (msg.ms || 2500));
+    case 'page-click':
+      lastPageClick.set(tabId, Date.now());
       sendResponse({});
       return;
     case 'frame-check':
@@ -372,8 +464,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 function forget(tabId) {
   lastThumb.delete(tabId);
+  lastPageClick.delete(tabId);
   frameInfo.delete(tabId);
-  allowTabUntil.delete(tabId);
   setMode(tabId, 'off');
 }
 chrome.tabs.onRemoved.addListener(forget);
@@ -382,6 +474,14 @@ chrome.tabs.onUpdated.addListener((tabId, info) => {
 });
 
 chrome.commands.onCommand.addListener((command, tab) => {
-  const map = { 'toggle-focus': 'toggle', 'toggle-lock': 'toggle-lock', 'next-player': 'next', 'reload-player': 'reload' };
+  if (!tab || tab.id == null) return;
+  if (command === 'pip') {
+    videoCommand(tab.id, 'pip');
+    return;
+  }
+  const map = {
+    theater: 'toggle', faster: 'faster', slower: 'slower', 'reset-speed': 'reset-speed',
+    'next-video': 'next', 'reload-player': 'reload', fill: 'fill',
+  };
   if (map[command]) run(tab, map[command]);
 });

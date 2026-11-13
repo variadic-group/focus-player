@@ -1,25 +1,26 @@
 // Focus Player — content script (isolated world, top frame only).
-// Site-agnostic: finds the main video player on whatever page it runs on.
+// Theater mode for any web video: finds the main player, fills the window with it,
+// and adds speed, picture-in-picture, live catch-up and stall recovery. Site-agnostic.
 (() => {
   if (window.__focusPlayer) return;
 
   const VERSION = chrome.runtime.getManifest().version;
   const EXT_ORIGIN = new URL(chrome.runtime.getURL('')).origin;
-  const OVERLAY_URL = chrome.runtime.getURL('overlay.html');
+  const UI_URL = chrome.runtime.getURL('ui.html');
   const STYLE_ID = '__fp-style';
   const MIN_W = 200;
   const MIN_H = 120;
 
-  // Auto-fix tuning
-  const TICK_MS = 3000; // freeze check interval
-  const FROZEN_MS = 15000; // picture unchanged this long = frozen
-  const GRACE_MS = 12000; // time a restarted player gets to come back
-  const MAX_FIXES = 3; // auto-restarts allowed per window before backing off
+  const TICK_MS = 3000; // health check interval in theater mode
+  const STALL_MS = 12000; // playing but the clock isn't moving this long = stalled
+  const FROZEN_HINT_MS = 15000; // picture unchanged this long (when we can't see inside the player) = offer Reload
+  const GRACE_MS = 10000; // time a (re)started player gets before we judge it
+  const MAX_FIXES = 3;
   const FIX_WINDOW_MS = 180000;
-  const LIVE_LAG_S = 30; // fall further behind live than this = jump forward
   const AGENT_FRESH_MS = 7000;
+  const LIVE_BEHIND_S = 15; // show "Go live" when further behind than this
 
-  // Common ad slot sizes (IAB). A frame this size is almost never the game.
+  // Common ad slot sizes (IAB). A frame this size is almost never the main video.
   const AD_SIZES = [
     [300, 250], [336, 280], [728, 90], [970, 90], [970, 250], [160, 600], [300, 600],
     [320, 50], [320, 100], [468, 60], [250, 250], [200, 200], [120, 600], [300, 50], [300, 100],
@@ -29,17 +30,6 @@
   const PLAYER_WORDS = /(embed|player|stream|live|watch|video|hls|jwplayer|clappr|videojs|plyr)/;
   const CHAT_WORDS = /(chat|comment|disqus|chatango|tlk\.io|shoutbox|minnit|cbox|tawk|crisp|intercom|livechat|discord)/;
 
-  const PAGE_CSS = `
-html[data-fp-on] { background:#000 !important; overflow:hidden !important; }
-html[data-fp-on] body { background:transparent !important; overflow:hidden !important; }
-html[data-fp-on] body * { visibility:hidden !important; }
-html[data-fp-on] [data-fp-target], html[data-fp-on] [data-fp-target] * { visibility:visible !important; }
-html[data-fp-on] [data-fp-target] { TARGET }
-html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
-  const SHADOW_CSS = `
-[data-fp-target], [data-fp-target] * { visibility:visible !important; }
-[data-fp-target] { TARGET }
-[data-fp-ancestor] { ANCESTOR }`;
   const TARGET_RULES = `position:fixed !important; inset:0 !important; top:0 !important; left:0 !important;
   right:auto !important; bottom:auto !important; width:100vw !important; height:100vh !important;
   max-width:none !important; max-height:none !important; min-width:0 !important; min-height:0 !important;
@@ -50,12 +40,25 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
   contain:none !important; will-change:auto !important; backdrop-filter:none !important;
   clip-path:none !important; -webkit-mask:none !important; mask:none !important;
   content-visibility:visible !important;`;
-  const fill = (css) => css.replace('TARGET', TARGET_RULES).replace('ANCESTOR', ANCESTOR_RULES);
+  const PAGE_CSS = `
+html[data-fp-on] { background:#000 !important; overflow:hidden !important; }
+html[data-fp-on] body { background:transparent !important; overflow:hidden !important; }
+html[data-fp-on] body * { visibility:hidden !important; }
+html[data-fp-on] [data-fp-target], html[data-fp-on] [data-fp-target] * { visibility:visible !important; }
+html[data-fp-on] [data-fp-target] { ${TARGET_RULES} }
+html[data-fp-on] [data-fp-target][data-fp-fill] { object-fit:cover !important; }
+html[data-fp-on] [data-fp-ancestor] { ${ANCESTOR_RULES} }`;
+  const SHADOW_CSS = `
+[data-fp-target], [data-fp-target] * { visibility:visible !important; }
+[data-fp-target] { ${TARGET_RULES} }
+[data-fp-target][data-fp-fill] { object-fit:cover !important; }
+[data-fp-ancestor] { ${ANCESTOR_RULES} }`;
 
-  // mode: off | armed (auto-on, waiting silently) | wait (pill showing) | pick | focus
+  // mode: off | armed (watching for a video on a Button/Always site) | suggest (Theater button showing)
+  //       | wait (you asked, no video yet) | pick (tap the video you want) | theater
   const state = {
     mode: 'off',
-    locked: true,
+    armKind: 'suggest',
     menuOpen: false,
     visualsOn: false,
     target: null,
@@ -65,67 +68,58 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
     candidates: [],
     idx: 0,
     lastList: [],
-    overlay: null,
+    frame: null,
+    frameReady: false,
     videoListeners: null,
     observer: null,
     observerTimer: null,
     lostSince: 0,
-    waitReason: 'loading',
     waitTimer: null,
     waitStart: 0,
     pending: null,
-    baseline: new Map(),
     agents: new Map(),
+    mainFrame: null,
     agentAsk: 0,
+    suggestEl: null,
+    speed: 1,
+    lag: null,
+    fill: false,
+    frozen: false,
+    timers: [],
   };
 
-  const wd = {
-    timer: null,
-    stillSince: 0,
-    lastT: null,
-    stage: 0,
-    fixes: [],
-    graceUntil: 0,
-    busy: false,
-    userPaused: false,
-    hinted: false,
-    lastLiveJump: 0,
-    lastAutoPlay: 0,
-    startT: null,
-    moving: 0,
-    lastDiff: null,
-    lastVia: '',
-  };
+  const wd = { timer: null, stillSince: 0, lastT: null, stage: 0, fixes: [], graceUntil: 0, busy: false, lastDiff: null, via: '' };
 
-  // lockStyle: 'hold' (press-and-hold to unlock/exit) | 'tap' (one tap) | 'off' (no kid lock, theater mode only)
-  let settings = { deep: false, autofix: true, silence: true, blockAds: true, siteModes: {}, picks: {}, lockStyle: 'hold' };
+  let settings = { deep: false, recover: true, silence: true, blockAds: true, siteModes: {}, picks: {}, speeds: {} };
   const normalize = () => {
-    settings.autofix = settings.autofix !== false;
+    settings.recover = settings.recover !== false;
     settings.silence = settings.silence !== false;
     settings.blockAds = settings.blockAds !== false;
-    if (!['hold', 'tap', 'off'].includes(settings.lockStyle)) settings.lockStyle = 'hold';
     settings.siteModes = settings.siteModes || {};
+    settings.picks = settings.picks || {};
+    settings.speeds = settings.speeds || {};
   };
   const settingsReady = chrome.storage.local
-    .get(['deep', 'autofix', 'silence', 'blockAds', 'siteModes', 'picks', 'lockStyle'])
+    .get(['deep', 'recover', 'silence', 'blockAds', 'siteModes', 'picks', 'speeds'])
     .then((s) => {
       settings = { ...settings, ...s };
       normalize();
     })
     .catch(() => {});
-  // This site's setting: 'off' | 'suggest' (show a Focus button) | 'auto' (go straight in)
-  const siteMode = () => settings.siteModes[location.origin] || 'off';
+  const siteMode = () => settings.siteModes[location.origin] || 'off'; // off | suggest | auto
 
   const bg = (msg) => chrome.runtime.sendMessage(msg).catch(() => null);
   const isVideo = (el) => !!el && el.tagName === 'VIDEO';
   const isMedia = (el) => !!el && /^(VIDEO|IFRAME|EMBED|OBJECT)$/.test(el.tagName);
+  const fmtRate = (r) => (Math.round(r * 100) / 100).toString().replace(/\.0+$/, '');
+  const later = (fn, ms) => state.timers.push(setTimeout(fn, ms));
 
   // ======================= finding the player =======================
   function allMedia() {
     const out = [];
     const walk = (root) => {
       root.querySelectorAll('video, iframe, embed, object').forEach((el) => {
-        if (!el.hasAttribute('data-fp-overlay')) out.push(el);
+        if (!el.hasAttribute('data-fp-ui')) out.push(el);
       });
       root.querySelectorAll('*').forEach((el) => {
         if (el.shadowRoot) walk(el.shadowRoot);
@@ -158,22 +152,25 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
     const cs = getComputedStyle(el);
     const w = r.width;
     const h = r.height;
-    const info = { el, tag: el.tagName, w: Math.round(w), h: Math.round(h), score: 0, reasons: [], ad: false, ok: false, srcHost: '' };
+    const info = { el, tag: el.tagName, w: Math.round(w), h: Math.round(h), score: 0, reasons: [], ok: false, srcHost: '' };
     const hidden = cs.display === 'none' || parseFloat(cs.opacity || '1') <= 0.05 || (!state.visualsOn && cs.visibility === 'hidden');
     if (hidden) { info.reasons.push('hidden'); return info; }
     if (w < MIN_W || h < MIN_H) { info.reasons.push('too-small'); return info; }
 
     let s = w * h;
+    let bad = false;
     const ratio = w / h;
     const share = (w * h) / Math.max(1, innerWidth * innerHeight);
-    if (isAdSize(w, h)) { s *= 0.05; info.ad = true; info.reasons.push('ad-size'); }
+    if (isAdSize(w, h)) { s *= 0.05; bad = true; info.reasons.push('ad-size'); }
     if (ratio >= 1.5 && ratio <= 1.95) { s *= 1.6; info.reasons.push('tv-shape'); }
     else if (ratio < 1.1 || ratio > 2.6) { s *= 0.4; info.reasons.push('odd-shape'); }
     if (share < 0.1) { s *= 0.5; info.reasons.push('small-share'); }
 
     const src = srcOf(el).toLowerCase();
     const names = `${el.id} ${typeof el.className === 'string' ? el.className : ''} ${el.getAttribute('name') || ''} ${el.getAttribute('title') || ''}`.toLowerCase();
-    if (AD_WORDS.test(src) || AD_WORDS.test(names)) { s *= 0.05; info.ad = true; info.reasons.push('ad-words'); }
+    if (AD_WORDS.test(src) || AD_WORDS.test(names)) { s *= 0.05; bad = true; info.reasons.push('ad-words'); }
+    if (CHAT_WORDS.test(src) || CHAT_WORDS.test(names)) { s *= 0.05; bad = true; info.reasons.push('chat-like'); }
+    if (el.tagName !== 'VIDEO' && ratio < 0.9) { bad = true; info.reasons.push('portrait'); }
     if (PLAYER_WORDS.test(src) || PLAYER_WORDS.test(names)) { s *= 1.3; info.reasons.push('player-words'); }
 
     if (el.tagName === 'IFRAME') {
@@ -189,9 +186,7 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
       if (el.loop && el.muted && share < 0.25) { s *= 0.3; info.reasons.push('looping-preview'); }
     }
     info.score = s;
-    if (CHAT_WORDS.test(src) || CHAT_WORDS.test(names)) { s *= 0.05; info.chat = true; info.reasons.push('chat-like'); }
-    if (el.tagName !== 'VIDEO' && ratio < 0.9) { info.chat = true; info.reasons.push('portrait'); }
-    info.ok = !info.ad && !info.chat;
+    info.ok = !bad;
     info.srcHost = hostOf(src);
     return info;
   }
@@ -203,7 +198,7 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
       .sort((a, b) => b.score - a.score);
   }
 
-  // ---------- remembered pick (per site) ----------
+  // ---------- "Pick a different video" is remembered per site ----------
   function signature(el) {
     const src = srcOf(el);
     let path0 = '';
@@ -222,7 +217,7 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
   }
 
   function matchRemembered(list) {
-    const sig = settings.picks && settings.picks[location.hostname];
+    const sig = settings.picks[location.hostname];
     if (!sig) return null;
     let best = null;
     let bestPts = 0;
@@ -241,10 +236,8 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
   }
 
   function rememberPick(el) {
-    const picks = { ...(settings.picks || {}) };
-    picks[location.hostname] = signature(el);
-    settings.picks = picks;
-    chrome.storage.local.set({ picks }).catch(() => {});
+    settings.picks = { ...settings.picks, [location.hostname]: signature(el) };
+    chrome.storage.local.set({ picks: settings.picks }).catch(() => {});
   }
 
   function chooseTarget() {
@@ -256,16 +249,17 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
     return good.length ? { el: good[0].el, list, why: 'best' } : { el: null, list, why: '' };
   }
 
-  // Tap-to-pick: what media element is under this point?
+  // What player is under this point? (Pick mode)
   function mediaAt(x, y) {
-    setOverlayClickable(false);
+    const f = state.frame;
+    if (f) f.style.setProperty('pointer-events', 'none', 'important');
     try {
       const seen = new Set();
       const scan = (root) => {
         for (const el of root.elementsFromPoint(x, y)) {
           if (seen.has(el)) continue;
           seen.add(el);
-          if (el.hasAttribute && el.hasAttribute('data-fp-overlay')) continue;
+          if (el.hasAttribute && el.hasAttribute('data-fp-ui')) continue;
           if (isMedia(el)) return el;
           if (el.shadowRoot) {
             const inner = scan(el.shadowRoot);
@@ -288,15 +282,16 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
       }
       return el;
     } finally {
-      setOverlayClickable(true);
+      if (f) f.style.setProperty('pointer-events', 'auto', 'important');
     }
   }
 
-  // ======================= marking the chosen player =======================
+  // ======================= filling the window =======================
   function clearMarks() {
     for (const el of state.marked) {
       el.removeAttribute('data-fp-target');
       el.removeAttribute('data-fp-ancestor');
+      el.removeAttribute('data-fp-fill');
     }
     state.marked = [];
     for (const s of state.shadowStyles) s.remove();
@@ -307,7 +302,7 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
   function addShadowStyle(root) {
     if (state.shadowStyles.some((s) => s.parentNode === root)) return;
     const s = document.createElement('style');
-    s.textContent = fill(SHADOW_CSS);
+    s.textContent = SHADOW_CSS;
     root.appendChild(s);
     state.shadowStyles.push(s);
   }
@@ -316,6 +311,7 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
     clearMarks();
     state.target = el;
     el.setAttribute('data-fp-target', '');
+    if (state.fill) el.setAttribute('data-fp-fill', '');
     state.marked.push(el);
     let n = el;
     for (;;) {
@@ -329,25 +325,23 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
       n = p;
     }
     if (isVideo(el)) attachVideoListeners(el);
-    if (el.hasAttribute('data-fp-hushed')) {
-      el.removeAttribute('data-fp-hushed');
-      try { el.muted = false; } catch (_) {}
-    }
     state.agents.clear();
     state.mainFrame = null;
-    resetFreezeClock(GRACE_MS);
+    state.lag = null;
+    state.frozen = false;
+    resetHealth(GRACE_MS);
   }
 
   function attachVideoListeners(v) {
     const h = () => pushState();
-    ['play', 'pause', 'volumechange'].forEach((ev) => v.addEventListener(ev, h));
+    ['play', 'pause', 'ratechange'].forEach((ev) => v.addEventListener(ev, h));
     state.videoListeners = { v, h };
   }
 
   function detachVideoListeners() {
     const l = state.videoListeners;
     if (!l) return;
-    ['play', 'pause', 'volumechange'].forEach((ev) => l.v.removeEventListener(ev, l.h));
+    ['play', 'pause', 'ratechange'].forEach((ev) => l.v.removeEventListener(ev, l.h));
     state.videoListeners = null;
   }
 
@@ -357,7 +351,7 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
       if (!document.getElementById(STYLE_ID)) {
         const s = document.createElement('style');
         s.id = STYLE_ID;
-        s.textContent = fill(PAGE_CSS);
+        s.textContent = PAGE_CSS;
         (document.head || document.documentElement).appendChild(s);
       }
       document.documentElement.setAttribute('data-fp-on', '');
@@ -367,7 +361,48 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
     }
   }
 
-  // ======================= Deep mode agents (inside embedded players) =======================
+  // ======================= talking to the video =======================
+  // The background finds the frame that holds the video (only the page itself without
+  // "Control embedded players"; every frame with it) and runs the command there.
+  async function video(cmd, arg) {
+    const frameId = isVideo(state.target) ? 0 : state.mode === 'theater' ? state.mainFrame : null;
+    return (await bg({ fp: 'video', cmd, arg, frameId })) || { ok: false, error: 'unreachable' };
+  }
+
+  function noVideoMessage(r) {
+    if (r.error === 'no-video' && !settings.deep) return 'Can’t reach this player. Turn on “Control embedded players” in the popup.';
+    if (r.error === 'no-video') return 'No video found';
+    if (r.error === 'pip') return 'Picture-in-picture isn’t available for this video';
+    return 'That didn’t work on this page';
+  }
+
+  async function speedCmd(cmd, arg) {
+    const r = await video(cmd, arg);
+    if (!r.ok) {
+      toast(noVideoMessage(r));
+      return r;
+    }
+    state.speed = r.rate;
+    const speeds = { ...settings.speeds };
+    if (Math.abs(r.rate - 1) < 0.01) delete speeds[location.origin];
+    else speeds[location.origin] = r.rate;
+    settings.speeds = speeds;
+    chrome.storage.local.set({ speeds }).catch(() => {});
+    toast(`Speed ${fmtRate(r.rate)}×`);
+    return r;
+  }
+
+  async function applySavedSpeed() {
+    const sp = settings.speeds[location.origin];
+    if (!sp || Math.abs(sp - 1) < 0.01) return;
+    const r = await video('speed', sp);
+    if (r.ok) {
+      state.speed = r.rate;
+      pushState();
+    }
+  }
+
+  // ======================= Deep reports (Control embedded players) =======================
   function mainAgent() {
     const now = Date.now();
     let best = null;
@@ -381,48 +416,28 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
   function playbackView() {
     const t = state.target;
     if (isVideo(t)) {
-      let lag = null;
+      let lag = null; // only live streams (no fixed length) have a "live edge" to fall behind
       try {
         const s = t.seekable;
-        if (s && s.length) {
+        if (!isFinite(t.duration) && s && s.length) {
           const e = s.end(s.length - 1);
           if (isFinite(e)) lag = e - t.currentTime;
         }
       } catch (_) {}
-      return { paused: t.paused || t.ended, t: t.currentTime, lag, via: 'video' };
+      return { paused: t.paused || t.ended, t: t.currentTime, lag, rate: t.playbackRate, via: 'video' };
     }
     const a = mainAgent();
-    if (a) return { paused: a.paused || a.ended, t: a.t, lag: a.lag, via: 'deep' };
+    if (a) return { paused: a.paused || a.ended, t: a.t, lag: a.lag, rate: a.rate, via: 'deep' };
     return null;
-  }
-
-  function control(cmd) {
-    const v = isVideo(state.target) ? state.target : null;
-    if (v) {
-      if (cmd === 'play') {
-        if (v.paused) { wd.userPaused = false; v.play()?.catch?.(() => {}); }
-        else { wd.userPaused = true; v.pause(); }
-      } else if (cmd === 'mute') v.muted = !v.muted;
-      else if (cmd === 'volup') { v.muted = false; v.volume = Math.min(1, Math.round((v.volume + 0.1) * 10) / 10); }
-      else if (cmd === 'voldown') v.volume = Math.max(0, Math.round((v.volume - 0.1) * 10) / 10);
-      else if (cmd === 'jumplive') jumpToLive(v);
-      else if (cmd === 'playonly' && v.paused) v.play()?.catch?.(() => {});
-      return;
-    }
-    const a = mainAgent();
-    if (!a) return;
-    if (cmd === 'play') wd.userPaused = !a.paused;
-    bg({ fp: 'agent-cmd', frameId: a.frameId, cmd });
   }
 
   chrome.runtime.onMessage.addListener((m) => {
     if (!m) return;
     if (m.fp === 'blocked-tab') {
-      if (state.overlay && state.mode === 'focus') pushState({ toast: 'Blocked a pop-up tab' });
-      else pageToast('Focus Player blocked a pop-up tab');
+      toast('Blocked a pop-up tab');
       return;
     }
-    if (m.fp !== 'agent-report' || state.mode !== 'focus') return;
+    if (m.fp !== 'agent-report' || state.mode !== 'theater') return;
     state.agents.set(m.frameId, { ...m, at: Date.now() });
     const a = mainAgent();
     const fid = a ? a.frameId : null;
@@ -430,10 +445,11 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
       state.mainFrame = fid;
       bg({ fp: 'main-frame', frameId: fid });
     }
+    if (a && typeof a.rate === 'number') state.speed = a.rate;
     pushState();
   });
 
-  // ======================= re-finding the player if the site swaps it =======================
+  // ======================= follow the player if the site swaps it =======================
   function startObserver() {
     stopObserver();
     state.observer = new MutationObserver(() => {
@@ -451,49 +467,47 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
   }
 
   function retarget() {
-    if (state.mode !== 'focus' || (state.target && state.target.isConnected)) return true;
-    const c = chooseTarget(); // visualsOn=true here, so our own hiding is ignored when rating
+    if (state.mode !== 'theater' || (state.target && state.target.isConnected)) return true;
+    const c = chooseTarget();
     if (!c.el) return false;
     state.candidates = c.list.filter((i) => i.ok).map((i) => i.el);
     state.idx = Math.max(0, state.candidates.indexOf(c.el));
     setTarget(c.el);
     bg({ fp: 'agents-refresh' });
-    pushState({ toast: 'Found the player again' });
+    later(applySavedSpeed, 1500);
+    pushState();
     return true;
   }
 
-  // ======================= auto-fix =======================
-  function resetFreezeClock(grace) {
+  // ======================= stream health =======================
+  function resetHealth(grace) {
     wd.stillSince = 0;
     wd.lastT = null;
     wd.stage = 0;
-    wd.hinted = false;
     wd.graceUntil = Date.now() + (grace || 0);
     bg({ fp: 'frame-reset' });
   }
 
-  function startWatchdog() {
-    stopWatchdog();
+  function startHealth() {
+    stopHealth();
     wd.fixes = [];
-    wd.userPaused = false;
-    resetFreezeClock(GRACE_MS);
+    resetHealth(GRACE_MS);
     wd.timer = setInterval(tick, TICK_MS);
   }
 
-  function stopWatchdog() {
+  function stopHealth() {
     clearInterval(wd.timer);
     wd.timer = null;
   }
 
   async function tick() {
-    if (state.mode !== 'focus' || wd.busy) return;
-    if (state.starting) return; // start mode has its own faster check
+    if (state.mode !== 'theater' || wd.busy) return;
     const now = Date.now();
 
     if (!state.target || !state.target.isConnected) {
       if (!retarget()) {
         if (!state.lostSince) state.lostSince = now;
-        else if (now - state.lostSince > 10000) showWait('loading');
+        else if (now - state.lostSince > 10000) showWait();
       }
       return;
     }
@@ -504,20 +518,14 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
       bg({ fp: 'agents-refresh' });
     }
 
-    if (!state.locked || document.visibilityState !== 'visible') {
-      wd.stillSince = 0;
-      wd.lastT = null;
-      return;
-    }
-
-    // Keep it playing: if the page or the player pauses it (not you), press play again.
     const pv = playbackView();
-    if (pv && pv.paused && !pv.ended && !wd.userPaused && pv.t >= 0.5 && now - wd.lastAutoPlay > 3000) {
-      wd.lastAutoPlay = now;
-      control('playonly');
+    const lag = pv && pv.lag != null && pv.lag > LIVE_BEHIND_S ? Math.round(pv.lag) : null;
+    if (lag !== state.lag) {
+      state.lag = lag;
+      pushState();
     }
 
-    if (!settings.autofix || now < wd.graceUntil) {
+    if (!settings.recover || document.visibilityState !== 'visible' || now < wd.graceUntil) {
       wd.stillSince = 0;
       wd.lastT = null;
       return;
@@ -525,24 +533,15 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
 
     let moving = null;
     if (pv) {
-      wd.lastVia = pv.via;
-      if (pv.paused && wd.userPaused) { wd.stillSince = 0; wd.lastT = null; return; }
-      if (pv.paused && pv.t < 0.5) {
-        if (!wd.hinted) {
-          wd.hinted = true;
-          pushState({ toast: 'Video hasn’t started. Hold Unlock, press the player’s play button, then Lock.' });
-        }
-        return;
-      }
-      if (!pv.paused && pv.lag != null && pv.lag > LIVE_LAG_S && now - wd.lastLiveJump > 30000) {
-        wd.lastLiveJump = now;
-        control('jumplive');
-        pushState({ toast: 'Caught up to live' });
-      }
-      moving = pv.paused ? false : wd.lastT === null ? null : pv.t !== wd.lastT;
+      wd.via = pv.via;
+      // Paused is your choice (or the player's): leave it alone.
+      if (pv.paused) { wd.stillSince = 0; wd.lastT = null; return; }
+      moving = wd.lastT === null ? null : pv.t !== wd.lastT;
       wd.lastT = pv.t;
     } else {
-      wd.lastVia = 'snapshot';
+      // Can't see inside this player: compare tiny snapshots of the tab. We can't tell
+      // "paused" from "frozen" this way, so we only offer a Reload button.
+      wd.via = 'snapshot';
       wd.busy = true;
       try {
         const r = await bg({ fp: 'frame-check' });
@@ -553,49 +552,50 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
       } finally {
         wd.busy = false;
       }
+      if (moving === null) return;
+      if (moving) {
+        wd.stillSince = 0;
+        if (state.frozen) { state.frozen = false; styleUI(); pushState(); }
+        return;
+      }
+      if (!wd.stillSince) wd.stillSince = now;
+      if (!state.frozen && now - wd.stillSince >= FROZEN_HINT_MS) {
+        state.frozen = true;
+        styleUI();
+        pushState({ wake: true });
+      }
+      return;
     }
 
     if (moving === null) return;
     if (moving) { wd.stillSince = 0; wd.stage = 0; return; }
     if (!wd.stillSince) wd.stillSince = now;
-    if (now - wd.stillSince >= (wd.stage === 1 ? FROZEN_MS / 2 : FROZEN_MS)) {
+    if (now - wd.stillSince >= (wd.stage ? STALL_MS / 2 : STALL_MS)) {
       wd.stillSince = 0;
       recover();
     }
   }
 
-  function recover() {
+  async function recover() {
     const now = Date.now();
     wd.fixes = wd.fixes.filter((t) => now - t < FIX_WINDOW_MS);
     if (wd.fixes.length >= MAX_FIXES) {
       wd.graceUntil = now + 60000;
-      pushState({ toast: 'This feed keeps freezing and may be down. Unlock → Tools → Change source.' });
+      toast('This stream keeps stalling. It may be down.');
       return;
     }
-    if (playbackView() && wd.stage === 0) {
+    if (wd.stage === 0) {
       wd.stage = 1;
-      wd.graceUntil = now + 6000;
-      control('jumplive');
-      pushState({ toast: 'Picture froze. Jumping back to live…' });
+      wd.graceUntil = now + 5000;
+      toast('Stream stalled. Catching up…');
+      await video('jumplive');
       return;
     }
     wd.fixes.push(now);
-    reloadPlayer('auto');
+    reloadPlayer(true);
   }
 
-  function jumpToLive(v) {
-    try {
-      const s = v.seekable;
-      if (s && s.length) {
-        const end = s.end(s.length - 1);
-        if (isFinite(end) && end - v.currentTime > 3) v.currentTime = end - 2;
-      }
-    } catch (_) {}
-    const p = v.play();
-    if (p && p.catch) p.catch(() => {});
-  }
-
-  function reloadPlayer(why) {
+  function reloadPlayer(auto) {
     const el = state.target;
     if (!el) return;
     let ok = true;
@@ -606,181 +606,127 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
     } else if (el.tagName === 'VIDEO') {
       const src = el.currentSrc || el.src;
       if (src && !src.startsWith('blob:') && !el.srcObject) {
+        const t = el.currentTime;
         el.load();
-        jumpToLive(el);
-      } else {
-        jumpToLive(el);
-        ok = !el.paused;
-      }
+        if (!isFinite(el.duration) || auto) el.play().catch(() => {});
+        else el.currentTime = t;
+      } else ok = false;
     } else {
       const clone = el.cloneNode(true);
       el.replaceWith(clone);
       setTarget(clone);
     }
     state.agents.clear();
-    resetFreezeClock(GRACE_MS);
-    setTimeout(() => bg({ fp: 'agents-refresh' }), 2500);
-    if (!ok) pushState({ toast: 'Couldn’t restart this player. Exit, reload the page, and turn Focus Player back on.' });
-    else pushState({ toast: why === 'auto' ? 'Picture froze. Restarting the player…' : 'Restarting the player…' });
+    state.frozen = false;
+    styleUI();
+    resetHealth(GRACE_MS);
+    later(() => bg({ fp: 'agents-refresh' }), 2500);
+    later(applySavedSpeed, 3000);
+    toast(ok ? (auto ? 'Stream stalled. Restarting the player…' : 'Restarting the player…') : 'This player can’t be restarted. Reload the page.');
   }
 
-  // ======================= overlay (extension iframes: taps never reach the page) =======================
-  // Two extension-owned frames:
-  //  - 'shield': always full-window and NEVER resized. It catches every tap while locked (and in Pick
-  //    mode) and is simply made click-through otherwise. Never resizing it matters: Chrome routes taps
-  //    into a cross-process frame by its last drawn size, so a frame that just grew can briefly let taps
-  //    fall through to the page.
-  //  - 'pill': the small bars you use while unlocked (Press play, Unlocked/Tools, Change source, Focus button).
-  const SHIELD_UIS = ['locked', 'pick'];
-  const PILL_UIS = ['start', 'unlocked', 'menu', 'wait', 'suggest'];
-  const frames = { shield: null, pill: null };
-  const ready = { shield: false, pill: false };
-
-  function makeFrame(role) {
+  // ======================= the control pill (extension iframe) =======================
+  function ensureUI() {
+    if (state.frame && state.frame.isConnected) return;
+    state.frameReady = false;
     const f = document.createElement('iframe');
-    f.src = OVERLAY_URL + '?role=' + role;
+    f.src = UI_URL;
     f.setAttribute('allowtransparency', 'true');
     f.setAttribute('aria-label', 'Focus Player controls');
-    f.setAttribute('data-fp-overlay', role);
-    return f;
+    f.setAttribute('data-fp-ui', '');
+    state.frame = f;
+    styleUI();
+    document.documentElement.appendChild(f);
   }
 
-  function ensureOverlay() {
-    for (const role of ['shield', 'pill']) {
-      if (frames[role] && frames[role].isConnected) continue;
-      ready[role] = false; // messages wait until the frame says 'ready'
-      frames[role] = makeFrame(role);
-      document.documentElement.appendChild(frames[role]);
-    }
-    state.overlay = frames.shield;
-    styleOverlay();
-  }
-
-  function removeOverlay() {
-    for (const role of ['shield', 'pill']) {
-      frames[role]?.remove();
-      frames[role] = null;
-      ready[role] = false;
-    }
-    state.overlay = null;
-  }
-
-  function setOverlayClickable(on) {
-    if (frames.shield) frames.shield.style.setProperty('pointer-events', on && SHIELD_UIS.includes(uiMode()) ? 'auto' : 'none', 'important');
-    if (frames.pill) frames.pill.style.setProperty('pointer-events', on && PILL_UIS.includes(uiMode()) ? 'auto' : 'none', 'important');
+  function removeUI() {
+    state.frame?.remove();
+    state.frame = null;
+    state.frameReady = false;
   }
 
   function uiMode() {
-    if (state.mode === 'focus') {
-      if (state.menuOpen) return 'menu';
-      if (state.starting) return 'start';
-      return state.locked ? 'locked' : 'unlocked';
-    }
-    return state.mode; // pick | wait | suggest
+    if (state.mode === 'theater') return state.menuOpen ? 'menu' : state.frozen ? 'frozen' : 'theater';
+    return state.mode; // wait | pick | suggest
   }
 
-  function styleOverlay() {
-    const ui = uiMode();
+  function styleUI() {
+    const f = state.frame;
+    if (!f) return;
     const base = {
       position: 'fixed', border: '0', margin: '0', padding: '0', 'z-index': '2147483647',
       background: 'transparent', 'color-scheme': 'light', display: 'block', visibility: 'visible',
-      opacity: '1', 'max-width': 'none', 'max-height': 'none', transform: 'none',
-      right: 'auto', bottom: 'auto', 'box-shadow': 'none',
+      opacity: '1', 'max-width': 'none', 'max-height': 'none', 'pointer-events': 'auto',
+      transform: 'none', right: 'auto', bottom: 'auto', 'box-shadow': 'none',
     };
-    const full = { top: '0', left: '0', width: '100vw', height: '100vh', 'border-radius': '0' };
-    if (frames.shield) {
-      const st = { ...base, ...full, 'pointer-events': SHIELD_UIS.includes(ui) ? 'auto' : 'none' };
-      for (const [k, v] of Object.entries(st)) frames.shield.style.setProperty(k, v, 'important');
-    }
-    if (frames.pill) {
-      const boxes = {
-        unlocked: { top: '12px', left: '12px', width: '360px', height: '64px', 'border-radius': '18px' },
-        start: { top: '12px', left: 'calc(50vw - min(330px, 48vw))', width: 'min(660px, 96vw)', height: '72px', 'border-radius': '20px' },
-        suggest: { top: 'calc(100vh - 88px)', left: 'calc(100vw - 388px)', width: '368px', height: '68px', 'border-radius': '20px' },
-        menu: { top: '12px', left: '12px', width: '360px', height: 'min(560px, calc(100vh - 24px))', 'border-radius': '18px' },
-        wait: { top: '12px', left: 'calc(50vw - min(310px, 48vw))', width: 'min(620px, 96vw)', height: '72px', 'border-radius': '20px' },
-      };
-      const on = PILL_UIS.includes(ui);
-      const st = { ...base, ...(boxes[ui] || boxes.unlocked), 'pointer-events': on ? 'auto' : 'none', display: on ? 'block' : 'none' };
-      for (const [k, v] of Object.entries(st)) frames.pill.style.setProperty(k, v, 'important');
-    }
-  }
-
-  // Second line of defence: a tap that lands on one of our frames before it can handle it
-  // (e.g. while it is still loading) is dropped before the page's own listeners can see it.
-  for (const type of ['click', 'dblclick', 'auxclick', 'mousedown', 'mouseup', 'pointerdown', 'pointerup', 'touchstart', 'touchend', 'contextmenu']) {
-    window.addEventListener(
-      type,
-      (e) => {
-        const t = e.target;
-        if (t && t.nodeType === 1 && t.hasAttribute('data-fp-overlay')) {
-          e.stopImmediatePropagation();
-          e.preventDefault();
-        }
-      },
-      true
-    );
-  }
-
-  function waitText() {
-    if (state.waitReason === 'sources') return 'Click a source. I’ll lock on when it plays.';
-    if (Date.now() - state.waitStart > 60000) return 'Still no video. Start the stream, or tap Pick it.';
-    return 'Waiting for the video to start…';
+    const top = (w, h) => ({ top: '10px', left: `calc(50vw - min(${w / 2}px, 48vw))`, width: `min(${w}px, 96vw)`, height: `${h}px`, 'border-radius': '16px' });
+    const boxes = {
+      theater: top(520, 56),
+      frozen: top(520, 112),
+      menu: top(520, 300),
+      wait: top(520, 56),
+      pick: { top: '0', left: '0', width: '100vw', height: '100vh', 'border-radius': '0' },
+      suggest: { top: 'calc(100vh - 84px)', left: 'calc(100vw - 344px)', width: '324px', height: '64px', 'border-radius': '16px' },
+    };
+    const box = boxes[uiMode()] || boxes.theater;
+    for (const [k, v] of Object.entries({ ...base, ...box })) f.style.setProperty(k, v, 'important');
   }
 
   function pushState(extra) {
-    const v = isVideo(state.target) ? state.target : null;
-    const a = v ? null : mainAgent();
-    const msg = {
-      __fp: 'state',
-      ui: uiMode(),
-      locked: state.locked,
-      hasControls: !!(v || a),
-      paused: v ? v.paused : a ? a.paused : null,
-      muted: v ? v.muted : a ? a.muted : null,
-      multi: state.candidates.length > 1,
-      fullscreen: !!document.fullscreenElement,
-      autofix: settings.autofix,
-      deep: !!settings.deep,
-      remembered: !!(settings.picks && settings.picks[location.hostname]),
-      silence: settings.silence,
-      lockStyle: settings.lockStyle,
-      blockAds: settings.blockAds,
-      siteMode: siteMode(),
-      suggestLabel: state.suggestEl ? describe(state.suggestEl) : '',
-      origin: location.origin,
-      host: location.hostname,
-      waitReason: state.waitReason,
-      waitText: waitText(),
-      ...(extra || {}),
-    };
-    for (const role of ['shield', 'pill']) {
-      const f = frames[role];
-      if (f && f.contentWindow && ready[role]) f.contentWindow.postMessage(msg, EXT_ORIGIN);
-    }
+    const f = state.frame;
+    if (!f || !f.contentWindow || !state.frameReady) return;
+    const pv = state.mode === 'theater' ? playbackView() : null;
+    f.contentWindow.postMessage(
+      {
+        __fp: 'state',
+        ui: uiMode(),
+        speed: fmtRate(pv && typeof pv.rate === 'number' ? pv.rate : state.speed),
+        lag: state.lag,
+        multi: state.candidates.length > 1,
+        fullscreen: !!document.fullscreenElement,
+        fill: state.fill,
+        deep: !!settings.deep,
+        host: location.hostname,
+        waitLong: Date.now() - state.waitStart > 45000,
+        suggestLabel: state.suggestEl ? describe(state.suggestEl) : '',
+        ...(extra || {}),
+      },
+      EXT_ORIGIN
+    );
   }
 
-  function onMessage(e) {
-    if (state.mode === 'off') return;
-    const role = frames.shield && e.source === frames.shield.contentWindow ? 'shield' : frames.pill && e.source === frames.pill.contentWindow ? 'pill' : null;
-    if (!role || e.origin !== EXT_ORIGIN) return;
+  function toast(text) {
+    if (state.frame && state.frameReady && (state.mode === 'theater' || state.mode === 'pick')) pushState({ toast: text });
+    else pageToast(text);
+  }
+
+  function onUIMessage(e) {
+    if (!state.frame || e.source !== state.frame.contentWindow || e.origin !== EXT_ORIGIN) return;
     const d = e.data;
     if (!d || d.__fp !== true) return;
     switch (d.cmd) {
-      case 'ready': ready[role] = true; pushState(); break;
-      case 'play': case 'mute': case 'volup': case 'voldown': control(d.cmd); break;
+      case 'ready':
+        state.frameReady = true;
+        pushState({ wake: true });
+        break;
+      case 'exit': exitAll(false); break;
+      case 'dismiss': exitAll(true); break;
+      case 'faster': case 'slower': case 'reset-speed': speedCmd(d.cmd); break;
+      case 'pip': pipCmd(); break;
+      case 'live':
+        video('jumplive').then((r) => { if (r.ok) { state.lag = null; pushState({ toast: 'Live' }); } });
+        break;
       case 'fullscreen': toggleFullscreen(); break;
-      case 'reload': if (state.mode === 'focus') reloadPlayer('manual'); break;
-      case 'next': next(); break;
-      case 'unlock': setLocked(false); break;
-      case 'lock': setLocked(true); break;
-      case 'menu': state.menuOpen = !!d.open; styleOverlay(); pushState(); break;
-      case 'sources': showWait('sources'); break;
+      case 'fill': fillCmd(); break;
+      case 'menu': state.menuOpen = !!d.open; styleUI(); pushState(); break;
+      case 'reload': state.menuOpen = false; styleUI(); reloadPlayer(false); break;
+      case 'next': state.menuOpen = false; styleUI(); next(); break;
       case 'pick': showPick(); break;
-      case 'done': {
+      case 'settings': state.menuOpen = false; styleUI(); pushState(); bg({ fp: 'open-options' }); break;
+      case 'frozen-dismiss': state.frozen = false; wd.stillSince = Date.now(); styleUI(); pushState(); break;
+      case 'focusNow': {
         const c = chooseTarget();
-        if (c.el) enterFocus(c.el, c.why);
-        else pushState({ toast: 'No video found yet' });
+        if (c.el) enterTheater(c.el, c.why);
         break;
       }
       case 'hover': {
@@ -788,89 +734,55 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
         if (!el) { pushState({ hover: null }); break; }
         const r = el.getBoundingClientRect();
         const i = rate(el);
-        const label = `${el.tagName === 'VIDEO' ? 'Video' : 'Player'} ${Math.round(r.width)}×${Math.round(r.height)}${i.ad ? ' · looks like an ad' : ''}`;
-        pushState({ hover: { x: r.left, y: r.top, w: r.width, h: r.height, label, ad: i.ad } });
+        const label = `${el.tagName === 'VIDEO' ? 'Video' : 'Player'} ${Math.round(r.width)}×${Math.round(r.height)}${i.ok ? '' : ' · probably not the main video'}`;
+        pushState({ hover: { x: r.left, y: r.top, w: r.width, h: r.height, label, warn: !i.ok } });
         break;
       }
       case 'pickAt': {
         const el = mediaAt(d.x, d.y);
-        if (!el) { pushState({ toast: 'No video there. Tap right on the video.' }); break; }
+        if (!el) { pushState({ toast: 'No video there. Click right on the video.' }); break; }
         state.lastList = candidates();
         rememberPick(el);
-        enterFocus(el, 'picked');
+        enterTheater(el, 'picked');
         break;
       }
       case 'pickCancel': {
         const t = state.prevTarget;
-        if (t && t.isConnected) enterFocus(t, 'back');
+        if (t && t.isConnected) enterTheater(t, 'back');
         else exitAll(false);
         break;
       }
-      case 'autofix':
-        settings.autofix = !settings.autofix;
-        chrome.storage.local.set({ autofix: settings.autofix }).catch(() => {});
-        resetFreezeClock(0);
-        pushState({ toast: settings.autofix ? 'Auto-fix on' : 'Auto-fix off' });
-        break;
-      case 'forget': {
-        const picks = { ...(settings.picks || {}) };
-        delete picks[location.hostname];
-        settings.picks = picks;
-        chrome.storage.local.set({ picks }).catch(() => {});
-        pushState({ toast: 'Forgot the remembered video for this site' });
-        break;
-      }
-      case 'diag': pushState({ diag: diagnostics() }); break;
-      case 'exit': exitAll(false); break;
-      case 'dismiss': exitAll(true); break;
-      case 'focusNow': {
-        const c = chooseTarget();
-        if (c.el) enterFocus(c.el, c.why);
-        break;
-      }
-      case 'silence':
-        settings.silence = !settings.silence;
-        chrome.storage.local.set({ silence: settings.silence }).catch(() => {});
-        pushState({ toast: settings.silence ? 'Other sounds silenced' : 'Other sounds allowed' });
-        break;
     }
   }
+  window.addEventListener('message', onUIMessage, true);
 
-  chrome.storage.onChanged.addListener((ch, area) => {
-    if (area !== 'local') return;
-    for (const k of Object.keys(ch)) settings[k] = ch[k].newValue;
-    normalize();
-    if ('silence' in ch && state.mode === 'focus') bg({ fp: 'status', mode: state.mode });
-    if ('deep' in ch && state.mode === 'focus') {
-      state.agentAsk = Date.now();
-      bg({ fp: 'agents-refresh' });
-      bg({ fp: 'status', mode: state.mode }); // re-apply pop-up guard to all frames
+  async function pipCmd() {
+    const r = await video('pip');
+    if (!r.ok) toast(noVideoMessage(r));
+  }
+
+  async function fillCmd() {
+    state.fill = !state.fill;
+    if (state.target) {
+      if (state.fill) state.target.setAttribute('data-fp-fill', '');
+      else state.target.removeAttribute('data-fp-fill');
     }
-    pushState();
-  });
+    if (!isVideo(state.target)) await video('fill', state.fill);
+    state.menuOpen = false;
+    styleUI();
+    pushState({ toast: state.fill ? 'Zoom: fill the screen' : 'Zoom: fit the whole picture' });
+  }
 
   function toggleFullscreen() {
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-    else
-      document.documentElement.requestFullscreen().catch(() => {
-        pushState({ toast: 'Full screen was blocked here. Try F11 (Windows) or Ctrl+Cmd+F (Mac).' });
-      });
+    else document.documentElement.requestFullscreen().catch(() => toast('Full screen was blocked. Try F11, or Ctrl+Cmd+F on a Mac.'));
   }
-
-  function setLocked(v) {
-    clearInterval(state.startTimer);
-    state.locked = !!v;
-    state.starting = false;
-    state.menuOpen = false;
-    styleOverlay();
-    resetFreezeClock(state.locked ? GRACE_MS : 0);
-    pushState({ toast: state.locked ? 'Kid lock on' : '' });
-  }
+  document.addEventListener('fullscreenchange', () => pushState(), true);
 
   function next() {
     state.candidates = state.candidates.filter((el) => el.isConnected);
     if (state.candidates.length < 2) {
-      pushState({ toast: 'Only one video on this page' });
+      toast('Only one video on this page');
       return;
     }
     state.idx = (state.idx + 1) % state.candidates.length;
@@ -879,145 +791,96 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
     pushState({ toast: `Video ${state.idx + 1} of ${state.candidates.length}` });
   }
 
-  function onBeforeUnload(e) {
-    e.preventDefault();
-    e.returnValue = '';
-    return '';
-  }
-
   // ======================= modes =======================
   function status() {
     bg({ fp: 'status', mode: state.mode });
   }
 
-  // ---------- start mode: wait for real playback, then lock ----------
-  async function startTick() {
-    if (state.mode !== 'focus' || !state.starting) return;
-    const now = Date.now();
-    const pv = playbackView();
-    if (pv) {
-      if (!pv.paused && wd.startT !== null && pv.t !== wd.startT) return finishStart();
-      if (pv.paused && !wd.userPaused && now - wd.lastAutoPlay > 3000) {
-        wd.lastAutoPlay = now;
-        control('playonly'); // works for normal videos and, with Deep mode, embedded ones
-      }
-      wd.startT = pv.t;
-      return;
-    }
-    if (wd.busy) return;
-    wd.busy = true;
-    try {
-      const r = await bg({ fp: 'frame-check' });
-      if (r && typeof r.diff === 'number') {
-        state.canSnapshot = true;
-        wd.moving = r.diff > 0.35 ? wd.moving + 1 : 0;
-        if (wd.moving >= 2) return finishStart();
-      } else if (r && r.error) state.canSnapshot = false;
-    } finally {
-      wd.busy = false;
-    }
-    // Can't see the picture at all: lock a few seconds after you click into the player.
-    if (state.canSnapshot === false && state.playerClickAt && now - state.playerClickAt > 6000) finishStart();
+  function clearTimers() {
+    state.timers.forEach(clearTimeout);
+    state.timers = [];
   }
 
-  function finishStart() {
-    clearInterval(state.startTimer);
-    if (!state.starting) return;
-    state.starting = false;
-    state.locked = settings.lockStyle !== 'off';
-    styleOverlay();
-    resetFreezeClock(GRACE_MS);
-    pushState(state.locked ? { toast: 'Playing \u2014 kid lock on' } : null);
-  }
-
-  // Clicking into an embedded player moves focus into its frame; that's how we know you pressed play.
-  window.addEventListener('blur', () => {
-    setTimeout(() => {
-      if (state.mode === 'focus' && state.target && document.activeElement === state.target) state.playerClickAt = Date.now();
-    }, 0);
-  });
-
-  function leaveFocus() {
-    clearInterval(state.startTimer);
-    state.starting = false;
-    stopWatchdog();
+  function leaveTheater() {
+    clearTimers();
+    stopHealth();
     stopObserver();
     visuals(false);
-    window.removeEventListener('beforeunload', onBeforeUnload, true);
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   }
 
-  function enterFocus(el, why) {
+  function describe(el) {
+    const r = el.getBoundingClientRect();
+    return `${el.tagName === 'VIDEO' ? 'Video' : 'Player'} ${Math.round(r.width)}×${Math.round(r.height)}`;
+  }
+
+  async function enterTheater(el, why) {
     stopWaitPoll();
-    state.mode = 'focus';
-    // Don't lock yet: a player that isn't playing needs a click on its own play button.
-    // The kid lock switches on by itself as soon as the video is actually playing.
-    state.locked = false;
-    state.starting = settings.lockStyle !== 'off';
-    state.playerClickAt = 0;
-    state.canSnapshot = null;
-    wd.startT = null;
-    wd.moving = 0;
-    wd.userPaused = false;
+    clearTimers();
+    // Some players pause themselves when they're resized. Note whether it was playing so we can undo that.
+    const before = await video('state');
+    state.mode = 'theater';
     state.menuOpen = false;
+    state.frozen = false;
     const good = (state.lastList || []).filter((i) => i.ok || i.el === el).map((i) => i.el);
     if (!good.includes(el)) good.unshift(el);
     state.candidates = good;
     state.idx = good.indexOf(el);
     state.prevTarget = el;
+    if (before.ok) state.speed = before.rate;
     visuals(true);
     setTarget(el);
-    ensureOverlay();
-    styleOverlay();
-    window.addEventListener('beforeunload', onBeforeUnload, true);
+    ensureUI();
+    styleUI();
     startObserver();
-    startWatchdog();
-    clearInterval(state.startTimer);
-    if (state.starting) {
-      state.startTimer = setInterval(startTick, 1000);
-      startTick();
-    }
+    startHealth();
     status();
-    const toasts = {
-      picked: 'Got it. I’ll use this video on this site from now on.',
-      switched: 'Locked on to the new source',
-      remembered: 'Using the video you picked last time',
-    };
-    pushState(toasts[why] ? { toast: toasts[why] } : null);
+    const toasts = { picked: 'Got it. This video will be used on this site from now on.', remembered: 'Using the video you picked for this site' };
+    pushState({ wake: true, ...(toasts[why] ? { toast: toasts[why] } : {}) });
+    if (before.ok && !before.paused) {
+      const resume = async () => {
+        if (state.mode !== 'theater') return;
+        const now = await video('state');
+        if (now.ok && now.paused && !now.ended) video('play');
+      };
+      later(resume, 1200);
+      later(resume, 3000);
+    }
+    later(applySavedSpeed, 600);
+    later(applySavedSpeed, 3000);
   }
 
-  function showWait(reason) {
-    leaveFocus();
+  function showWait() {
+    leaveTheater();
     state.mode = 'wait';
-    state.waitReason = reason;
     state.menuOpen = false;
-    if (reason === 'sources') {
-      state.baseline = new Map(allMedia().map((el) => [el, srcOf(el)]));
-    }
-    ensureOverlay();
-    styleOverlay();
+    ensureUI();
+    styleUI();
     startWaitPoll();
     status();
     pushState();
   }
 
   function showPick() {
-    leaveFocus();
+    leaveTheater();
     stopWaitPoll();
     state.mode = 'pick';
-    ensureOverlay();
-    styleOverlay();
+    state.menuOpen = false;
+    // Start a fresh full-window layer: Chrome can take a moment to route the mouse into a
+    // frame that has just been enlarged, which would make the first hovers and clicks miss.
+    removeUI();
+    ensureUI();
+    styleUI();
     status();
     pushState();
   }
 
-  // Quietly watch the page for a player. kind 'auto' = go straight into focus; 'suggest' = show the Focus button.
+  // Quietly watch the page for a video (Button / Always sites).
   function arm(kind) {
     state.mode = 'armed';
     state.armKind = kind;
-    state.waitReason = 'auto';
     state.suggestEl = null;
-    removeOverlay();
+    removeUI();
     startWaitPoll();
     status();
   }
@@ -1025,27 +888,22 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
   function showSuggest(el) {
     state.mode = 'suggest';
     state.suggestEl = el;
-    ensureOverlay();
-    styleOverlay();
+    ensureUI();
+    styleUI();
     status();
     pushState();
   }
 
-  function describe(el) {
-    const r = el.getBoundingClientRect();
-    return `${el.tagName === 'VIDEO' ? 'Video' : 'Player'} ${Math.round(r.width)}\u00d7${Math.round(r.height)}`;
-  }
-
-  // hard = really off for this page. Otherwise, on sites set to Button/Auto,
-  // fall back to the Focus button so getting back in is one tap.
+  // hard = off for this page. Otherwise, on Button/Always sites, the Theater button comes back.
   function exitAll(hard) {
-    leaveFocus();
+    leaveTheater();
     stopWaitPoll();
-    removeOverlay();
+    removeUI();
     state.target = null;
     state.candidates = [];
     state.agents.clear();
     state.suggestEl = null;
+    state.menuOpen = false;
     if (!hard && siteMode() !== 'off') {
       arm('suggest');
       return;
@@ -1075,16 +933,8 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
       else if (c.el !== state.suggestEl) { state.suggestEl = c.el; pushState(); }
       return;
     }
-    let el = null;
-    let why = c.why;
-    if (state.mode === 'wait' && state.waitReason === 'sources') {
-      const ch = c.list.find((i) => i.ok && (!state.baseline.has(i.el) || state.baseline.get(i.el) !== srcOf(i.el)));
-      el = ch ? ch.el : null;
-      why = 'switched';
-    } else {
-      el = c.el;
-    }
     if (state.mode === 'wait' && (now - state.waitStart) % 15000 < 1000) pushState();
+    const el = c.el;
     if (!el) { state.pending = null; return; }
     if (!state.pending || state.pending.el !== el) {
       state.pending = { el, since: now };
@@ -1092,104 +942,91 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
     }
     if (now - state.pending.since >= 1200) {
       if (state.mode === 'armed' && state.armKind === 'suggest') showSuggest(el);
-      else enterFocus(el, why);
+      else enterTheater(el, c.why);
     }
   }
 
   async function start(trigger) {
     await settingsReady;
-    if (state.mode !== 'off' && state.mode !== 'armed' && state.mode !== 'suggest') return;
+    if (state.mode === 'theater' || state.mode === 'wait' || state.mode === 'pick') return;
     if (trigger === 'page-load') {
       const m = siteMode();
-      if (m === 'off') return;
-      arm(m === 'auto' ? 'auto' : 'suggest');
+      if (m !== 'off') arm(m === 'auto' ? 'auto' : 'suggest');
       return;
     }
     const c = chooseTarget();
-    if (c.el) enterFocus(c.el, c.why);
-    else showWait('loading');
+    if (c.el) enterTheater(c.el, c.why);
+    else showWait();
   }
+
+  // Note clicks inside the page or the player while in theater mode: a new tab that appears right
+  // after one is a pop-up, and the background closes it. (Clicking into an embedded player moves
+  // the keyboard focus into it, which is how a click there can be seen from here.)
+  const notePageClick = () => { if (state.mode === 'theater') bg({ fp: 'page-click' }); };
+  document.addEventListener('pointerdown', (e) => { if (e.isTrusted && !(e.target && e.target.hasAttribute && e.target.hasAttribute('data-fp-ui'))) notePageClick(); }, true);
+  window.addEventListener('blur', () => setTimeout(() => { if (document.activeElement && document.activeElement.tagName === 'IFRAME' && !document.activeElement.hasAttribute('data-fp-ui')) notePageClick(); }, 0));
+
+  // Esc leaves theater / pick mode when the page itself has the keyboard.
+  document.addEventListener(
+    'keydown',
+    (e) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      if (state.mode === 'pick') onUIMessage({ source: state.frame?.contentWindow, origin: EXT_ORIGIN, data: { __fp: true, cmd: 'pickCancel' } });
+      else if (state.mode === 'theater' && !document.fullscreenElement) exitAll(false);
+    },
+    true
+  );
 
   // ======================= diagnostics =======================
   function diagnostics() {
     const now = Date.now();
     const L = [];
-    const chrome_ = (navigator.userAgent.match(/Chrome\/([\d.]+)/) || [])[1] || '?';
+    const chromeV = (navigator.userAgent.match(/Chrome\/([\d.]+)/) || [])[1] || '?';
     L.push(`Focus Player ${VERSION} diagnostics`);
-    L.push(`Site: ${location.hostname}   Mode: ${state.mode}${state.mode === 'focus' ? (state.locked ? ' (locked)' : ' (unlocked)') : ''}`);
-    L.push(`Window: ${innerWidth}x${innerHeight}   Chrome ${chrome_}`);
-    L.push(`Kid lock: ${settings.lockStyle}${state.starting ? ' (waiting for playback before locking)' : ''}`);
-    L.push(`Settings: this site ${siteMode()} | auto-fix ${settings.autofix ? 'on' : 'off'} | silence ${settings.silence ? 'on' : 'off'} | block ads ${settings.blockAds ? 'on' : 'off'} | deep ${settings.deep ? 'on' : 'off'} | remembered pick ${settings.picks && settings.picks[location.hostname] ? 'yes' : 'no'}`);
-    L.push('Players found when chosen (best first):');
-    (state.lastList || []).slice(0, 8).forEach((i, n) => {
-      const mark = i.el === state.target ? '  <- showing' : '';
-      L.push(`  ${n + 1}. ${i.tag} ${i.w}x${i.h} score ${Math.round(i.score)} host ${i.srcHost || '-'} [${i.reasons.join(', ') || '-'}]${mark}`);
+    L.push(`Site: ${location.hostname}   Mode: ${state.mode}   Window: ${innerWidth}x${innerHeight}   Chrome ${chromeV}`);
+    L.push(`Settings: this site ${siteMode()} | recover ${settings.recover ? 'on' : 'off'} | mute others ${settings.silence ? 'on' : 'off'} | block ads ${settings.blockAds ? 'on' : 'off'} | embedded control ${settings.deep ? 'on' : 'off'} | speed ${fmtRate(state.speed)}x | picked ${settings.picks[location.hostname] ? 'yes' : 'no'}`);
+    const list = state.lastList && state.lastList.length ? state.lastList : candidates();
+    L.push('Players (best first):');
+    list.slice(0, 8).forEach((i, n) => {
+      L.push(`  ${n + 1}. ${i.tag} ${i.w}x${i.h} score ${Math.round(i.score)} host ${i.srcHost || '-'} [${i.reasons.join(', ') || '-'}]${i.el === state.target ? '  <- showing' : ''}`);
     });
-    if (!(state.lastList || []).length) L.push('  (none)');
+    if (!list.length) L.push('  (none)');
     const ags = [...state.agents.values()].filter((a) => now - a.at < AGENT_FRESH_MS);
-    L.push(`Deep-mode frames reporting: ${ags.length}`);
+    L.push(`Embedded frames reporting: ${ags.length}`);
     ags.forEach((a) =>
-      L.push(`  frame ${a.frameId}: ${a.hasVideo ? `video ${a.w}x${a.h} ${a.paused ? 'paused' : 'playing'} t=${(a.t || 0).toFixed(1)} behind-live ${a.lag == null ? '-' : a.lag.toFixed(1) + 's'} ready=${a.rs}` : 'no video'}`)
+      L.push(`  frame ${a.frameId}: ${a.hasVideo ? `video ${a.w}x${a.h} ${a.paused ? 'paused' : 'playing'} t=${(a.t || 0).toFixed(1)} rate=${a.rate} behind-live ${a.lag == null ? '-' : a.lag.toFixed(1) + 's'} ready=${a.rs}` : 'no video'}`)
     );
-    L.push(`Auto-fix: restarts in last 3 min ${wd.fixes.filter((x) => now - x < FIX_WINDOW_MS).length} | last check via ${wd.lastVia || '-'} | last snapshot change ${wd.lastDiff == null ? '-' : wd.lastDiff.toFixed(2)}`);
+    L.push(`Health: restarts in last 3 min ${wd.fixes.filter((x) => now - x < FIX_WINDOW_MS).length} | via ${wd.via || '-'} | last snapshot change ${wd.lastDiff == null ? '-' : wd.lastDiff.toFixed(2)} | frozen hint ${state.frozen ? 'yes' : 'no'}`);
     return L.join('\n');
   }
 
   function pageToast(text) {
     const host = document.createElement('div');
+    host.setAttribute('data-fp-ui', '');
     const root = host.attachShadow({ mode: 'closed' });
     root.innerHTML = `<style>
-      div{position:fixed;left:50%;top:24px;transform:translateX(-50%);z-index:2147483647;
-      background:#111;color:#fff;font:600 15px/1.3 system-ui,sans-serif;padding:14px 18px;
-      border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.4);max-width:80vw;text-align:center}</style><div></div>`;
+      div{position:fixed;left:50%;top:18px;transform:translateX(-50%);z-index:2147483647;
+      background:rgba(17,20,25,.92);color:#fff;font:600 14px/1.3 system-ui,-apple-system,sans-serif;padding:11px 16px;
+      border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.35);max-width:80vw;text-align:center;pointer-events:none}</style><div></div>`;
     root.querySelector('div').textContent = text;
     document.documentElement.appendChild(host);
-    setTimeout(() => host.remove(), 3000);
+    setTimeout(() => host.remove(), 2200);
   }
 
-  window.addEventListener('message', onMessage, true);
-  document.addEventListener('fullscreenchange', () => pushState(), true);
-
-  // Let real new-tab clicks through the pop-up tab blocker: a trusted click on a
-  // normal-sized link that opens a new tab. Page-sized invisible links (a common
-  // pop-under trick) don't count.
-  function onTrustedClick(e) {
-    if (!e.isTrusted || state.mode === 'off' || state.mode === 'focus') return;
-    const a = e.composedPath().find((n) => n && n.tagName === 'A' && n.href);
-    if (!a) return;
-    const newTab = a.target === '_blank' || e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1;
-    if (!newTab) return;
-    const r = a.getBoundingClientRect();
-    if (r.width * r.height > 0.4 * innerWidth * innerHeight) return;
-    bg({ fp: 'allow-next-tab' });
-  }
-  document.addEventListener('click', onTrustedClick, true);
-  document.addEventListener('auxclick', onTrustedClick, true);
-  document.addEventListener(
-    'contextmenu',
-    (e) => {
-      if (!e.isTrusted || state.mode === 'off' || state.mode === 'focus') return;
-      if (e.composedPath().some((n) => n && n.tagName === 'A' && n.href)) bg({ fp: 'allow-next-tab', ms: 15000 });
-    },
-    true
-  );
-
-  // Summary for the toolbar popup.
+  // ======================= toolbar popup / shortcuts =======================
   function info() {
     let found = null;
-    if (state.mode === 'focus' && state.target) found = { label: describe(state.target), ad: false };
+    if (state.mode === 'theater' && state.target) found = { label: describe(state.target), ok: true };
     else {
       const c = chooseTarget();
-      if (c.el) found = { label: describe(c.el), ad: false };
-      else if (c.list.length) found = { label: describe(c.list[0].el), ad: true };
+      if (c.el) found = { label: describe(c.el), ok: true };
+      else if (c.list.length) found = { label: describe(c.list[0].el), ok: false };
     }
     return {
       mode: state.mode,
-      locked: state.locked,
       found,
       siteMode: siteMode(),
-      remembered: !!(settings.picks && settings.picks[location.hostname]),
-      lockStyle: settings.lockStyle,
+      picked: !!settings.picks[location.hostname],
       origin: location.origin,
       host: location.hostname,
     };
@@ -1198,19 +1035,20 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
   async function handle(action) {
     await settingsReady;
     switch (action) {
+      case 'info': {
+        const i = info();
+        const v = await video('state');
+        i.rate = v.ok ? fmtRate(v.rate) : null;
+        i.hasVideo = !!v.ok;
+        return i;
+      }
       case 'toggle':
-        if (state.mode === 'focus' || state.mode === 'wait' || state.mode === 'pick') exitAll(false);
+        if (state.mode === 'theater' || state.mode === 'wait' || state.mode === 'pick') exitAll(false);
         else start('user');
         break;
-      case 'focus':
-        if (state.mode !== 'focus') start('user');
-        break;
-      case 'exit':
-        if (state.mode !== 'off') exitAll(false);
-        break;
-      case 'page-load':
-        start('page-load');
-        break;
+      case 'theater': if (state.mode !== 'theater') start('user'); break;
+      case 'exit': if (state.mode !== 'off') exitAll(false); break;
+      case 'page-load': start('page-load'); break;
       case 'site-changed':
         settings.siteModes = (await chrome.storage.local.get('siteModes')).siteModes || {};
         if (state.mode === 'off' || state.mode === 'armed' || state.mode === 'suggest') {
@@ -1218,33 +1056,25 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
           else arm(siteMode() === 'auto' ? 'auto' : 'suggest');
         }
         break;
-      case 'pick':
-        showPick();
-        break;
-      case 'diag':
-        return { ...info(), diag: diagnostics() };
+      case 'pick': showPick(); break;
+      case 'next': if (state.mode === 'theater') next(); break;
+      case 'reload': if (state.mode === 'theater') reloadPlayer(false); break;
+      case 'faster': case 'slower': case 'reset-speed': {
+        const r = await speedCmd(action);
+        return { ...info(), rate: r.ok ? fmtRate(r.rate) : null, hasVideo: !!r.ok };
+      }
+      case 'fill': if (state.mode === 'theater') await fillCmd(); break;
+      case 'diag': return { ...info(), diag: diagnostics() };
       case 'forget': {
-        const picks = { ...(settings.picks || {}) };
+        const picks = { ...settings.picks };
         delete picks[location.hostname];
         settings.picks = picks;
         await chrome.storage.local.set({ picks });
         break;
       }
-      case 'sources':
-        showWait('sources');
-        break;
-      case 'toggle-lock':
-        if (state.mode === 'focus') setLocked(!state.locked);
-        break;
-      case 'next':
-        if (state.mode === 'focus') next();
-        break;
-      case 'reload':
-        if (state.mode === 'focus') reloadPlayer('manual');
-        break;
     }
     return info();
   }
 
-  window.__focusPlayer = { handle, info: async () => { await settingsReady; return info(); } };
+  window.__focusPlayer = { handle };
 })();

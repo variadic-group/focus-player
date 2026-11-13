@@ -1,0 +1,8 @@
+<!doctype html><html><body style="margin:0;background:#000;overflow:hidden">
+<video id="v" muted playsinline style="display:block;width:100vw;height:100vh;object-fit:contain"></video>
+<script>
+const v=document.getElementById('v'), ms=new MediaSource(); v.src=URL.createObjectURL(ms);
+ms.addEventListener('sourceopen', async()=>{const sb=ms.addSourceBuffer('video/webm; codecs="vp8"');
+const buf=await (await fetch('demo.webm')).arrayBuffer();
+sb.addEventListener('updateend',()=>{ms.duration=Infinity;v.play().catch(()=>{});},{once:true}); sb.appendBuffer(buf);});
+</script></body></html>

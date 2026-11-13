@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Focus Player</title>
+  <link rel="stylesheet" href="ui.css">
+</head>
+<body class="ui-none">
+  <!-- ===== Theater mode: one small pill at the top, hides itself ===== -->
+  <div id="pill" class="bar" role="toolbar" aria-label="Focus Player">
+    <button class="ic" data-cmd="exit" title="Exit theater mode (Esc or Alt+Shift+F)" aria-label="Exit theater mode">
+      <svg viewBox="0 0 24 24"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>
+    </button>
+    <span class="sep"></span>
+    <div class="speed" role="group" aria-label="Playback speed">
+      <button class="ic sm" data-cmd="slower" title="Slower (Alt+Shift+,)" aria-label="Slower"><svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg></button>
+      <button id="speed" class="rate" data-cmd="reset-speed" title="Playback speed. Click to reset">1×</button>
+      <button class="ic sm" data-cmd="faster" title="Faster (Alt+Shift+.)" aria-label="Faster"><svg viewBox="0 0 24 24"><path d="M6 12h12M12 6v12"/></svg></button>
+    </div>
+    <span class="sep"></span>
+    <button id="live" class="live" data-cmd="live" title="Jump to live"><i></i><span>Go live</span></button>
+    <button class="ic" data-cmd="pip" title="Picture-in-picture (Alt+Shift+P)" aria-label="Picture-in-picture">
+      <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="11" width="7" height="6" rx="1" class="fill"/></svg>
+    </button>
+    <button id="fs" class="ic" data-cmd="fullscreen" title="Full screen" aria-label="Full screen">
+      <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+    </button>
+    <button id="more" class="ic" title="More" aria-label="More" aria-haspopup="menu">
+      <svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="1.6" class="fill"/><circle cx="12" cy="12" r="1.6" class="fill"/><circle cx="18" cy="12" r="1.6" class="fill"/></svg>
+    </button>
+    <div id="msg" role="status" aria-live="polite"></div>
+  </div>
+
+  <div id="frozen" class="bar note">
+    <span class="grow">The picture hasn't moved for a while.</span>
+    <button class="btn go" data-cmd="reload">Reload player</button>
+    <button class="ic" data-cmd="frozen-dismiss" title="It's paused, leave it" aria-label="Dismiss"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
+
+  <div id="menu" class="menu" role="menu">
+    <button role="menuitem" data-cmd="pick"><b>Pick a different video</b><small>Click the one you want; it's remembered for this site</small></button>
+    <button role="menuitem" data-cmd="next" class="multi-only"><b>Next video on this page</b><small>For pages with several players</small></button>
+    <button role="menuitem" data-cmd="fill" id="fillItem"><b>Zoom to fill</b><small>Crop the black bars on wide or tall screens</small></button>
+    <button role="menuitem" data-cmd="reload"><b>Reload player</b><small>Restarts just the video, not the page</small></button>
+    <button role="menuitem" data-cmd="settings"><b>Settings</b><small>Sites, shortcuts, ads and pop-ups</small></button>
+  </div>
+
+  <!-- ===== Waiting for a video ===== -->
+  <div id="wait" class="bar">
+    <span class="spinner"></span>
+    <span class="grow" id="waitText">Waiting for a video to start…</span>
+    <button class="btn" data-cmd="pick">Pick</button>
+    <button class="btn" data-cmd="exit">Cancel</button>
+  </div>
+
+  <!-- ===== Pick a video ===== -->
+  <div id="shield"></div>
+  <div id="hl"><span></span></div>
+  <div id="pickbar" class="bar">
+    <span class="dot"></span>
+    <span class="grow">Click the video you want</span>
+    <button class="btn" data-cmd="pickCancel">Cancel</button>
+  </div>
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <!-- ===== Button sites: offer theater mode when a video appears ===== -->
+  <div id="suggest" class="bar">
+    <button class="btn go big" data-cmd="focusNow" title="Theater mode (Alt+Shift+F)">
+      <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+      Theater mode
+    </button>
+    <span class="grow" id="suggestLabel"></span>
+    <button class="ic" data-cmd="dismiss" title="Not on this page" aria-label="Not on this page"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
+
+  <script src="ui.js"></script>
+</body>
+</html>

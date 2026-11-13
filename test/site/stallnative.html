@@ -1,0 +1,8 @@
+<!doctype html><html><head><meta charset="utf-8"><title>stalling stream</title></head><body style="margin:0">
+<header style="height:50px;background:#333;color:#fff">STALLING STREAM (page video)</header>
+<video id="vid" src="stall.webm" width="854" height="480" muted autoplay playsinline></video>
+<script>window.__starts=0; const v=document.getElementById('vid');
+v.addEventListener('loadstart',()=>__starts++);
+// A stream that can't buffer ahead never "autoplays" on its own, so start it like a player would.
+v.addEventListener('canplay',()=>v.play().catch(()=>{}));</script>
+</body></html>

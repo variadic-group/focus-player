@@ -1,58 +1,55 @@
-# Getting started with Focus Player
+# Getting started
 
-This takes about five minutes the first time. No technical knowledge needed.
+About two minutes. No technical knowledge needed.
 
 ## 1. Install
 
-1. Get the files:
-   - **Download ZIP** (green **Code** button on GitHub), or
-   - the `focus-player-x.y.z.zip` from the latest release.
-2. Unzip it somewhere you'll keep it, such as Documents. Don't delete that folder later; Chrome runs the extension from it.
-3. In Chrome, open **`chrome://extensions`** (type it in the address bar).
-4. Turn on **Developer mode** (switch in the top-right corner).
-5. Click **Load unpacked** and choose the folder that contains `manifest.json`. In the GitHub download, that's the **`extension`** folder.
-6. Click the puzzle-piece icon in the toolbar, then the **pin** next to Focus Player.
+1. Download **`focus-player-x.y.z.zip`** from the [latest release](https://github.com/variadic-group/focus-player/releases/latest) and unzip it somewhere you'll keep it, such as Documents. Chrome runs it from that folder, so don't delete it.
+2. In Chrome, go to **`chrome://extensions`** and switch on **Developer mode** (top right).
+3. Click **Load unpacked** and choose the **`focus-player`** folder.
+4. Click the puzzle-piece icon in the toolbar and **pin** Focus Player.
 
-> Updating later: replace the folder's contents with the new version, then click the ↻ arrow on Focus Player in `chrome://extensions`.
+> **Updating:** replace the folder's contents with the new version, then click ↻ on Focus Player in `chrome://extensions`.
 
 ## 2. Watch something
 
-1. Open a page with a video and start it playing (or not; Focus Player can wait).
-2. Click the **Focus Player** icon → **Focus the video**. Shortcut: **Alt+Shift+F**.
-3. The video fills the tab. If it isn't playing yet, a bar at the top says **Press play on the video**. Click the player's play button. Your click goes straight through, with no unlocking needed.
-4. Once the video plays, the **kid lock** turns on by itself: taps can't reach the website. If the page pauses the video, Focus Player presses play again.
-5. Move the mouse or tap to see the buttons: Play, Sound, Volume, Full screen, Reload.
-6. To leave: **press and hold "Hold: exit"** for about a second. A quick tap won't do it, on purpose, so your child can't exit by accident. Prefer one tap? Set **Kid lock → Tap** in the popup. Just want the video big with no lock? Choose **Off**.
+1. Open any page with a video.
+2. Press **Alt+Shift+F**, or click the Focus Player icon and then **Theater mode**.
+3. The video fills the window. Use the player's own buttons as normal.
+4. A slim pill at the top has **Exit**, **speed − 1× +**, **pop-out**, **full screen** and **⋯ More**. It hides itself; move the mouse to the top of the video to bring it back.
+5. Press **Esc** or **Alt+Shift+F** to go back to the page.
 
-## 3. Make your favourite sites one-tap
+## 3. Make your favourite sites effortless
 
-1. On the site, click the Focus Player icon.
-2. Under **On this site**, choose:
-   - **Button:** a small **▶ Focus video** button appears whenever a video shows up. Tap it to watch. Exiting brings the button back.
-   - **Auto:** goes straight into focus whenever a video starts.
-3. Chrome asks to allow access to that one site. Click **Allow**.
+Click the Focus Player icon on the site. Under **On this site**, choose:
 
-## 4. If something isn't right
+- **Button:** a small *Theater mode* button appears whenever a video shows up.
+- **Always:** goes straight into theater mode when a video starts.
 
-| Problem | Fix |
+Chrome asks once to allow that one site.
+
+## 4. Handy extras
+
+| You want to… | Do this |
 |---|---|
-| The video was paused when I focused | Press play on the video. You don't need to unlock first, because it stays unlocked until the video plays. With **Deep mode** on, it presses play for you. |
-| It focused the wrong thing | Hold **unlock** → **Tools** → **Pick the video myself**, then tap the right player. It remembers. To undo that, use the popup → **Forget it**. |
-| You want a different stream on the page | Hold **unlock** → **Tools** → **Change source**, then click the source on the page. It locks on by itself. |
-| The picture froze | It fixes itself within about 15–30 seconds, or tap **Reload**. |
-| Chat beeps or ads make noise | **Silence other sounds** is on by default. For chat boxes from other sites, turn on **Deep mode** in the popup. |
-| The player's own buttons don't respond | That's the kid lock. Hold **unlock**, use the player, then tap **Lock**. |
-| A site's video won't play at all | Turn off **Block ads & pop-ups** in the popup. Some sites refuse to play when ads are blocked. |
-| Anything else | Toolbar popup → **Copy diagnostics** (at the bottom), and paste it into a GitHub issue. |
+| Speed up a lecture | **Alt+Shift+.** (slower: **Alt+Shift+,**). It's remembered for each site. |
+| Keep watching while you work | **Alt+Shift+P** pops the video out. |
+| Catch up on a live stream | Click the red **Go live** in the pill. |
+| Get rid of black bars | ⋯ → **Zoom to fill** |
+| Use a different video on the page | ⋯ → **Pick a different video**, then click it. It's remembered. |
+| Fix a stuck stream | It recovers by itself. Or ⋯ → **Reload player**. |
+| Make embedded players fully controllable | Popup → **Control embedded players** (Chrome asks for access to all sites). |
 
-## 5. Casting to a TV
+## 5. Troubleshooting
 
-1. Focus the video first.
-2. Chrome menu (⋮) → **Cast…** → **Sources** → **Cast tab** → pick your TV.
-3. If the cast drops, start it again from the same menu. Chrome doesn't let extensions reconnect it.
+| What you see | Fix |
+|---|---|
+| "Waiting for a video to start" | Start the video, or click **Pick** and click it. |
+| Speed or pop-out says it can't reach the player | Turn on **Control embedded players** in the popup. |
+| "The picture hasn't moved for a while" | If you paused it, click ✕. If it's stuck, click **Reload player**. |
+| A site's video won't play at all | Turn off **Block ads & pop-ups**. Some sites refuse to play when ads are blocked. |
+| Anything else | Popup → **Copy diagnostics**, then paste it into a [GitHub issue](https://github.com/variadic-group/focus-player/issues). |
 
-On a Mac with an Apple TV, use **Screen Mirroring** in Control Center and put Chrome in full screen. An HDMI cable is the most reliable option of all.
+## 6. Casting to a TV
 
-## 6. Extra protection for the whole house (optional)
-
-Set your router's DNS to **1.1.1.3** and **1.0.0.3**, Cloudflare's family filter. That blocks malware and adult sites on every device, not just this browser.
+Turn on theater mode, then open Chrome menu ⋮ → **Cast…** → **Sources** → **Cast tab**. If the cast drops, start it again from the same menu. On a Mac with an Apple TV, use **Screen Mirroring** in Control Center and put Chrome in full screen.

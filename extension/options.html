@@ -4,18 +4,19 @@
   <meta charset="utf-8">
   <title>Focus Player settings</title>
   <style>
-    :root { --accent: #22a35a; }
-    body { margin: 0; font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #15181d; background: #f5f6f8; }
-    main { max-width: 660px; margin: 40px auto; padding: 0 20px; }
-    h1 { font-size: 22px; margin: 0 0 4px; display: flex; align-items: center; gap: 10px; }
+    :root { --accent: #1f9d55; }
+    body { margin: 0; font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #15181d; background: #f4f5f7; }
+    main { max-width: 640px; margin: 40px auto; padding: 0 20px; }
+    h1 { font-size: 22px; margin: 0 0 2px; display: flex; align-items: center; gap: 10px; }
     h1 img { border-radius: 9px; }
     p.sub { margin: 0 0 24px; color: #5b6270; }
     section { background: #fff; border-radius: 14px; padding: 18px 20px; margin-bottom: 14px; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
     h2 { font-size: 15px; margin: 0 0 4px; }
     .hint { color: #5b6270; font-size: 13px; margin: 4px 0 0 32px; }
-    h2 + .hint { margin-left: 0; margin-bottom: 12px; }
+    h2 + .hint { margin: 0 0 12px; }
     label.sw { display: flex; align-items: center; gap: 12px; cursor: pointer; font-weight: 600; }
     input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--accent); }
+    .row + .row { margin-top: 14px; }
     ul { list-style: none; margin: 0; padding: 0; }
     li { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid #eef0f3; }
     li:first-child { border-top: 0; }
@@ -23,59 +24,57 @@
     .empty { color: #8a90a0; font-size: 13px; }
     button, select { border: 0; background: #eef0f3; border-radius: 8px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; }
     button:hover { background: #e2e5ea; }
-    code { background: #eef0f3; padding: 1px 6px; border-radius: 5px; font-size: 13px; }
-    .row + .row { margin-top: 14px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    td { padding: 6px 0; border-top: 1px solid #eef0f3; }
+    tr:first-child td { border-top: 0; }
+    kbd { background: #eef0f3; border-radius: 5px; padding: 1px 6px; font: 600 12px system-ui; }
   </style>
 </head>
 <body>
 <main>
   <h1><img src="icons/48.png" width="32" height="32" alt="">Focus Player</h1>
-  <p class="sub">Settings. Everything here stays on this computer.</p>
-
-  <section>
-    <h2>Kid lock</h2>
-    <p class="hint">While locked, taps on the video land on Focus Player instead of the website, so they can't open ads or links. It turns on by itself once the video is playing.</p>
-    <select id="lockStyle">
-      <option value="hold">Hold to unlock (recommended with kids): a 1-second press unlocks or exits</option>
-      <option value="tap">Tap to unlock: one tap unlocks or exits</option>
-      <option value="off">Off: just fill the tab, the player's own buttons stay usable</option>
-    </select>
-  </section>
+  <p class="sub">Theater mode for every website. Settings stay on this computer.</p>
 
   <section>
     <div class="row">
       <label class="sw"><input type="checkbox" id="blockAds"> Block ads &amp; pop-ups</label>
-      <p class="hint">Blocks well-known ad and pop-up networks everywhere. While Focus Player is active on a tab, it also closes pop-up tabs that tab tries to open (real links you click still open).</p>
+      <p class="hint">Blocks well-known ad and pop-up networks everywhere. In theater mode, the page can't open pop-up windows or tabs.</p>
     </div>
     <div class="row">
-      <label class="sw"><input type="checkbox" id="silence"> Silence other sounds</label>
-      <p class="hint">While focused, mutes every other sound on the page: chat beeps, ad audio, notification pings. The video you're watching keeps its sound. With Deep mode this also covers chat boxes and widgets loaded from other sites.</p>
+      <label class="sw"><input type="checkbox" id="silence"> Mute other sounds</label>
+      <p class="hint">In theater mode, everything else on the page is muted: autoplay ads, chat pings, notification sounds. Your video keeps its sound.</p>
     </div>
     <div class="row">
-      <label class="sw"><input type="checkbox" id="autofix"> Auto-fix frozen video</label>
-      <p class="hint">If the picture stops for about 15 seconds while locked, it jumps back to live, then restarts the player.</p>
+      <label class="sw"><input type="checkbox" id="recover"> Recover stalled streams</label>
+      <p class="hint">If a playing stream gets stuck, it catches up to live, then restarts the player. A paused video is always left alone.</p>
     </div>
     <div class="row">
-      <label class="sw"><input type="checkbox" id="deep"> Deep mode</label>
-      <p class="hint">Lets Focus Player work inside embedded players (most sites use them): working Play/Volume buttons, exact freeze detection, staying live, and blocking pop-ups and sounds inside frames. Chrome asks for access to all sites. It only does anything in a tab where Focus Player is on.</p>
+      <label class="sw"><input type="checkbox" id="deep"> Control embedded players</label>
+      <p class="hint">Most sites play video inside a player from another site. This lets speed, pop-out, Go live, stall recovery and muting work inside those players too. Chrome asks for access to all sites; it's only used when you use Focus Player on a tab.</p>
     </div>
   </section>
 
   <section>
     <h2>Sites</h2>
-    <p class="hint"><b>Button</b>: shows a small "Focus video" button when a video appears. <b>Auto</b>: goes straight into focus. Set this for the current site from the toolbar popup.</p>
+    <p class="hint"><b>Button</b> shows a small Theater mode button when a video appears. <b>Always</b> goes straight into theater mode. Set the current site from the toolbar popup.</p>
     <ul id="sites"></ul>
   </section>
 
   <section>
-    <h2>Remembered videos</h2>
-    <p class="hint">Sites where you used "Pick the video."</p>
-    <ul id="picks"></ul>
+    <h2>Remembered per site</h2>
+    <p class="hint">Playback speeds you set and videos you picked.</p>
+    <ul id="memory"></ul>
   </section>
 
   <section>
     <h2>Keyboard shortcuts</h2>
-    <p class="hint">Alt+Shift+F focus on/off · Alt+Shift+L kid lock · Alt+Shift+N next video. Change them at <code>chrome://extensions/shortcuts</code>.</p>
+    <table>
+      <tr><td>Theater mode on / off</td><td><kbd>Alt</kbd> <kbd>Shift</kbd> <kbd>F</kbd></td></tr>
+      <tr><td>Picture-in-picture</td><td><kbd>Alt</kbd> <kbd>Shift</kbd> <kbd>P</kbd></td></tr>
+      <tr><td>Faster / slower</td><td><kbd>Alt</kbd> <kbd>Shift</kbd> <kbd>.</kbd> &nbsp;/&nbsp; <kbd>Alt</kbd> <kbd>Shift</kbd> <kbd>,</kbd></td></tr>
+      <tr><td>Exit theater mode</td><td><kbd>Esc</kbd></td></tr>
+      <tr><td>Reset speed, next video, reload player, zoom to fill</td><td><button id="shortcuts">Set your own keys</button></td></tr>
+    </table>
   </section>
 </main>
 <script src="options.js"></script>

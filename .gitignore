@@ -4,3 +4,5 @@ test/site/beep.wav
 __pycache__/
 *.zip
 .DS_Store
+test/out/
+store/demo/demo.webm

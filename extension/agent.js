@@ -1,13 +1,13 @@
-// Focus Player — Deep mode agent. Injected into the frames of the current tab only
-// while Focus Player is on and Deep mode is allowed. Reports the state of the biggest
-// video in its frame and carries out play / volume / jump-to-live requests.
+// Focus Player — embedded-player reporter. Injected into the frames of the current tab only
+// while theater mode is on and "Control embedded players" is allowed. It reports the state of
+// the biggest video in its frame; commands are run separately by the background.
 (() => {
   if (window.__fpAgent) {
     window.__fpAgent.start();
     return;
   }
   if (window.top === window) {
-    window.__fpAgent = { start() {}, stop() {} }; // top page is handled by content.js
+    window.__fpAgent = { start() {}, stop() {} }; // the page itself is handled by content.js
     return;
   }
 
@@ -32,10 +32,11 @@
     return b;
   }
 
+  // Only live streams (no fixed length) have a live edge to fall behind.
   function lagOf(v) {
     try {
       const s = v.seekable;
-      if (s && s.length) {
+      if (!isFinite(v.duration) && s && s.length) {
         const end = s.end(s.length - 1);
         if (isFinite(end)) return end - v.currentTime;
       }
@@ -50,7 +51,7 @@
       const r = v.getBoundingClientRect();
       Object.assign(msg, {
         w: Math.round(r.width), h: Math.round(r.height), paused: v.paused, ended: v.ended,
-        muted: v.muted, volume: v.volume, t: v.currentTime, lag: lagOf(v), rs: v.readyState,
+        t: v.currentTime, lag: lagOf(v), rs: v.readyState, rate: v.playbackRate,
       });
     }
     chrome.runtime
@@ -70,37 +71,8 @@
     timer = null;
   }
 
-  chrome.runtime.onMessage.addListener((m) => {
-    if (!m || m.fp !== 'agent-cmd') return;
-    const v = best();
-    if (!v) return;
-    switch (m.cmd) {
-      case 'play':
-        if (v.paused) v.play().catch(() => {});
-        else v.pause();
-        break;
-      case 'mute':
-        v.muted = !v.muted;
-        break;
-      case 'volup':
-        v.muted = false;
-        v.volume = Math.min(1, Math.round((v.volume + 0.1) * 10) / 10);
-        break;
-      case 'voldown':
-        v.volume = Math.max(0, Math.round((v.volume - 0.1) * 10) / 10);
-        break;
-      case 'playonly':
-        if (v.paused) v.play().catch(() => {});
-        break;
-      case 'jumplive': {
-        const lag = lagOf(v);
-        if (lag != null && lag > 3) v.currentTime = v.seekable.end(v.seekable.length - 1) - 2;
-        v.play().catch(() => {});
-        break;
-      }
-    }
-    setTimeout(report, 150);
-  });
+  // Clicks inside the player: a new tab right after one is a pop-up (see background.js).
+  document.addEventListener('pointerdown', (e) => { if (e.isTrusted) chrome.runtime.sendMessage({ fp: 'page-click' }).catch(() => {}); }, true);
 
   window.__fpAgent = { start, stop };
   start();

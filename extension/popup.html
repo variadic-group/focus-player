@@ -7,51 +7,63 @@
 </head>
 <body>
   <header>
-    <img src="icons/48.png" alt="" width="36" height="36">
+    <img src="icons/48.png" alt="" width="34" height="34">
     <div class="who">
       <h1>Focus Player</h1>
-      <p id="status">Checking this page…</p>
+      <p id="status">Looking for a video…</p>
     </div>
-    <button id="settings" class="icon" title="All settings">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    <button id="settings" class="icon" title="Settings" aria-label="Settings">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
     </button>
   </header>
 
-  <button id="primary" class="primary" disabled>Focus the video</button>
-  <div class="row">
-    <button id="pick" class="secondary" disabled>Pick the video</button>
-    <button id="sources" class="secondary" disabled>Change source</button>
+  <button id="theater" class="primary" disabled>
+    <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+    <span>Theater mode</span>
+    <kbd>⌥⇧F</kbd>
+  </button>
+
+  <div class="tools">
+    <button id="pip" class="tool" disabled title="Picture-in-picture (Alt+Shift+P)">
+      <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="11" width="7" height="6" rx="1" class="fill"/></svg>
+      <span>Pop out</span>
+    </button>
+    <div class="tool speed" title="Playback speed (Alt+Shift+, and Alt+Shift+.)">
+      <button id="slower" aria-label="Slower" disabled><svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg></button>
+      <button id="rate" title="Reset to 1×" disabled>1×</button>
+      <button id="faster" aria-label="Faster" disabled><svg viewBox="0 0 24 24"><path d="M6 12h12M12 6v12"/></svg></button>
+    </div>
+    <button id="pick" class="tool" disabled title="Choose which video on the page">
+      <svg viewBox="0 0 24 24"><path d="M4 4l7 17 2-7 7-2z"/></svg>
+      <span>Pick</span>
+    </button>
   </div>
+
+  <p class="hint tools-hint" id="toolsHint" hidden>This video is inside an embedded player. Turn on <b>Control embedded players</b> below for speed and pop-out.</p>
 
   <section id="siteBox">
     <div class="label">On <b id="host">this site</b></div>
     <div class="seg" id="siteMode" role="radiogroup">
       <button data-v="off" role="radio">Off</button>
       <button data-v="suggest" role="radio">Button</button>
-      <button data-v="auto" role="radio">Auto</button>
+      <button data-v="auto" role="radio">Always</button>
     </div>
     <p class="hint" id="siteHint"></p>
-    <p class="remember" id="rememberRow" hidden>Using the video you picked here · <button class="link" id="forget">Forget it</button></p>
-  </section>
-
-  <section>
-    <div class="label">Kid lock</div>
-    <div class="seg" id="lockStyle" role="radiogroup">
-      <button data-v="hold" role="radio">Hold</button>
-      <button data-v="tap" role="radio">Tap</button>
-      <button data-v="off" role="radio">Off</button>
-    </div>
-    <p class="hint" id="lockHint"></p>
+    <p class="hint" id="pickedRow" hidden>Using the video you picked here · <button class="link" id="forget">Reset</button></p>
   </section>
 
   <section class="toggles">
-    <label class="tg"><span><b>Block ads &amp; pop-ups</b><small>Ad networks, pop-up windows and pop-up tabs</small></span><input type="checkbox" id="blockAds"><i></i></label>
-    <label class="tg"><span><b>Silence other sounds</b><small>Chat beeps and ad audio. The game keeps its sound</small></span><input type="checkbox" id="silence"><i></i></label>
-    <label class="tg"><span><b>Auto-fix frozen video</b><small>Jump back to live, restart if stuck</small></span><input type="checkbox" id="autofix"><i></i></label>
-    <label class="tg"><span><b>Deep mode</b><small>Works inside embedded players. Asks for access to all sites</small></span><input type="checkbox" id="deep"><i></i></label>
+    <label class="tg"><span><b>Block ads &amp; pop-ups</b><small>Ad networks everywhere; pop-up tabs in theater mode</small></span><input type="checkbox" id="blockAds"><i></i></label>
+    <label class="tg"><span><b>Mute other sounds</b><small>Autoplay ads and chat pings, in theater mode</small></span><input type="checkbox" id="silence"><i></i></label>
+    <label class="tg"><span><b>Recover stalled streams</b><small>Catch up and restart a stuck live stream</small></span><input type="checkbox" id="recover"><i></i></label>
+    <label class="tg"><span><b>Control embedded players</b><small>Speed, pop-out and recovery inside players from other sites. Asks for access to all sites</small></span><input type="checkbox" id="deep"><i></i></label>
   </section>
 
-  <footer><kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> focus · <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd> lock · <button class="link" id="diag">Copy diagnostics</button></footer>
+  <footer>
+    <button class="link" id="shortcuts">Keyboard shortcuts</button>
+    <span>·</span>
+    <button class="link" id="diag">Copy diagnostics</button>
+  </footer>
 
   <script src="popup.js"></script>
 </body>
