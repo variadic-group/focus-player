@@ -80,3 +80,4 @@ Focus Player makes the video on the current web page easier to watch: it shows t
 | Screenshots 1280×800 | `store/screenshot-1.png` … `screenshot-5.png` |
 | Small promo tile 440×280 | `store/promo-small.png` |
 | Marquee 1400×560 | `store/promo-marquee.png` |
+| GitHub social preview 1280×640 | `store/social-preview.png` |
