@@ -80,4 +80,7 @@ Focus Player makes the video on the current web page easier to watch: it shows t
 | Screenshots 1280×800 | `store/screenshot-1.png` … `screenshot-5.png` |
 | Small promo tile 440×280 | `store/promo-small.png` |
 | Marquee 1400×560 | `store/promo-marquee.png` |
+| Promo video 1920×1080, 29 s (upload to YouTube as unlisted, paste the link) | `store/promo-film.mp4`, thumbnail `store/promo-film-thumbnail.jpg`; rebuild with `python3 store/video/build.py store/video/scenes.json store/promo-film.mp4` |
 | GitHub social preview 1280×640 | `store/social-preview.png` |
+
+The promo film's music is "Happy Beats Business Moves Vol. 11" by Sascha Ende (ende.app, CC BY 4.0, credit optional); its sounds are Kenney's (CC0).

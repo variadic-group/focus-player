@@ -1,0 +1,63 @@
+{
+  "name": "Focus Player",
+  "bg": "linear-gradient(160deg, #0d1117 0%, #15232a 100%)",
+  "accent": "#3ddc84",
+  "icon": "../../extension/icons/128.png",
+  "scenes": [
+    {
+      "kind": "card",
+      "at": 0.5,
+      "line": "Theater mode for every website."
+    },
+    {
+      "kind": "shot",
+      "at": 4.68,
+      "head": "Any video, buried in a page.",
+      "sub": "Comments, sidebars, banners and autoplay, all around it.",
+      "img": "../../docs/before.png"
+    },
+    {
+      "kind": "shot",
+      "at": 8.859,
+      "head": "One key fills the window.",
+      "sub": "Press it again and the page is back exactly as it was.",
+      "img": "../../docs/theater.png",
+      "typeAt": 0.8,
+      "typeStep": 0.22,
+      "caps": [
+        "Alt",
+        "Shift",
+        "F"
+      ],
+      "keysTop": 820
+    },
+    {
+      "kind": "shot",
+      "at": 13.039,
+      "head": "Speed, pop-out and Go live.",
+      "sub": "On any player, including ones embedded from other sites.",
+      "img": "../../docs/live.png"
+    },
+    {
+      "kind": "shot",
+      "at": 17.219,
+      "head": "Quieter while you watch.",
+      "sub": "Ad and pop-up blocking, muting and per-site choices, one click away.",
+      "img": "../../docs/theater.png",
+      "side": "../../docs/popup.png"
+    },
+    {
+      "kind": "shot",
+      "at": 21.399,
+      "head": "Picks the right video.",
+      "sub": "Skips ads and chat boxes, or click the one you want. It's remembered.",
+      "img": "../../docs/pick.png"
+    },
+    {
+      "kind": "card",
+      "at": 25.578,
+      "line": "Free on the Chrome Web Store. Nothing leaves your browser."
+    }
+  ],
+  "duration": 29.46
+}

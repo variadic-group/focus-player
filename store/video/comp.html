@@ -1,0 +1,74 @@
+<!doctype html>
+<meta charset="utf-8">
+<!-- The promo film, as one picture per moment: render(t) sets every element for time t, so
+     capture.mjs can step it frame by frame (the way Heirloom's ad films are made). The scenes,
+     colours and words come from scenes.json, passed in as window.FILM. -->
+<style>
+  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; }
+  body { background: var(--bg); background-color: #0d1117; font-family: "Inter Display", "Inter", sans-serif; color: #fff; position: relative; }
+  .scene { position: absolute; inset: 0; opacity: 0; }
+  .card { display: grid; place-content: center; justify-items: center; gap: 30px; text-align: center; }
+  .card .name { display: flex; align-items: center; gap: 30px; font-weight: 700; font-size: 120px; letter-spacing: -0.03em; }
+  .card p { margin: 0; font-family: Inter, sans-serif; font-size: 44px; opacity: 0.88; }
+  .shot h1 { position: absolute; left: 140px; top: 96px; margin: 0; font-weight: 700; font-size: 84px; letter-spacing: -0.03em; }
+  .shot p { position: absolute; left: 140px; top: 206px; margin: 0; font-family: Inter, sans-serif; font-size: 36px; opacity: 0.86; }
+  .shot .frame { position: absolute; left: 260px; top: 300px; width: 1400px; border-radius: 22px; overflow: hidden; box-shadow: 0 40px 120px rgb(0 0 0 / 0.42), 0 0 0 1px rgb(255 255 255 / 0.12); transform-origin: 50% 0; }
+  .shot .frame img { display: block; width: 100%; }
+  .keys { position: absolute; left: 50%; top: 610px; transform: translateX(-50%); min-width: 560px; padding: 22px 34px; border-radius: 999px; background: #fff; color: #1f2328; font: 500 40px/1 "Inter", sans-serif; box-shadow: 0 24px 70px rgb(0 0 0 / 0.35); white-space: pre; }
+  .keys::after { content: ""; display: inline-block; width: 3px; height: 40px; margin-left: 4px; vertical-align: -6px; background: var(--accent); }
+  .caps { position: absolute; left: 50%; transform: translateX(-50%); display: flex; gap: 18px; }
+  .caps b { display: grid; place-items: center; min-width: 120px; height: 120px; padding: 0 30px; border-radius: 22px; background: #fff; color: #1f2328; font: 600 48px/1 "Inter", sans-serif; box-shadow: 0 10px 0 #c9ced6, 0 30px 70px rgb(0 0 0 / 0.4); }
+  .side { position: absolute; right: 150px; top: 270px; width: 400px; border-radius: 22px; box-shadow: 0 40px 120px rgb(0 0 0 / 0.5); }
+  .mark { display: inline-flex; align-items: center; justify-content: center; border-radius: 23%; background: var(--markbg); flex: none; box-shadow: 0 0 0 4px rgb(255 255 255 / 0.3); }
+  .mark i { display: block; border-radius: 50%; background: #fff; }
+  .mark img { width: 100%; height: 100%; }
+</style>
+<body>
+<script>
+const F = window.FILM;
+document.documentElement.style.setProperty("--bg", F.bg);
+document.documentElement.style.setProperty("--accent", F.accent);
+document.documentElement.style.setProperty("--markbg", F.markBg || F.accent);
+const mark = (size) => F.icon
+  ? `<span class="mark" style="width:${size}px;height:${size}px;background:none;box-shadow:none"><img src="${F.icon}"></span>`
+  : `<span class="mark" style="width:${size}px;height:${size}px;gap:${size * 0.06}px">${`<i style="width:${size * 0.2}px;height:${size * 0.2}px"></i>`.repeat(3)}</span>`;
+const els = F.scenes.map((s) => {
+  const el = document.createElement("section");
+  if (s.kind === "card") {
+    el.className = "scene card";
+    el.innerHTML = `<div class="name">${mark(150)}<span>${F.name}</span></div><p>${s.line}</p>`;
+  } else {
+    el.className = "scene shot";
+    el.innerHTML = `<h1>${s.head}</h1><p>${s.sub}</p><div class="frame"><img src="${s.img}"></div>${s.keys ? `<div class="keys" style="top:${s.keysTop || 610}px"></div>` : ""}${s.caps ? `<div class="caps" style="top:${s.keysTop || 610}px">${s.caps.map((c) => `<b>${c}</b>`).join("")}</div>` : ""}${s.side ? `<img class="side" src="${s.side}">` : ""}`;
+  }
+  document.body.append(el);
+  return el;
+});
+const ease = (x) => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
+window.render = (t) => {
+  F.scenes.forEach((s, i) => {
+    const el = els[i], start = s.at, end = i + 1 < F.scenes.length ? F.scenes[i + 1].at : F.duration;
+    const inn = ease((t - start) / 0.45), out = i + 1 < F.scenes.length ? 1 - ease((t - end + 0.05) / 0.3) : 1;
+    const shown = t >= start - 0.01 && t < end + 0.35;
+    el.style.opacity = shown ? Math.min(inn, out) : 0;
+    el.style.transform = `translateY(${(1 - inn) * 48}px)`;
+    const frame = el.querySelector(".frame");
+    if (frame) frame.style.transform = `translateY(${(1 - ease((t - start - 0.1) / 0.6)) * 80}px) scale(${1 + 0.035 * Math.max(0, t - start) / (end - start)})`;
+    el.querySelectorAll(".caps b").forEach((b, k) => {
+      const shown = ease((t - start - s.typeAt - k * s.typeStep) / 0.18);
+      b.style.opacity = shown;
+      b.style.transform = `translateY(${(1 - shown) * 30}px)`;
+    });
+    const side = el.querySelector(".side");
+    if (side) { const shown = ease((t - start - 0.6) / 0.5); side.style.opacity = shown; side.style.transform = `translateX(${(1 - shown) * 80}px)`; }
+    const keys = el.querySelector(".keys");
+    if (keys) {
+      const n = Math.max(0, Math.floor((t - start - s.typeAt) / s.typeStep) + 1);
+      keys.textContent = s.keys.slice(0, t - start < s.typeAt ? 0 : n);
+      keys.style.opacity = t - start < s.typeAt - 0.25 ? 0 : 1;
+    }
+  });
+  if (t > F.duration - 0.6) document.body.style.opacity = 1 - ease((t - (F.duration - 0.6)) / 0.6) * 0.0;
+};
+window.ready = Promise.all([...document.images].map((i) => i.decode().catch(() => {}))).then(() => document.fonts.ready);
+</script>
