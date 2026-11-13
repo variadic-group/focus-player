@@ -8,7 +8,7 @@ html, body {
 button { appearance: none; border: 0; margin: 0; font: inherit; color: inherit; cursor: pointer; position: relative; overflow: hidden; }
 
 /* Every panel is hidden unless its mode is active */
-#shield, #hl, #pickbar, #badge, #bar, #parent, #wait, #suggest { display: none; }
+#shield, #hl, #pickbar, #badge, #bar, #parent, #wait, #suggest, #start { display: none; }
 body.ui-locked #shield, body.ui-locked #badge, body.ui-locked #bar { display: flex; }
 body.ui-locked #shield { display: block; }
 body.ui-pick #shield { display: block; cursor: crosshair; }
@@ -17,6 +17,11 @@ body.ui-pick #hl.on { display: block; }
 body.ui-unlocked #parent, body.ui-menu #parent { display: flex; }
 body.ui-wait #wait { display: flex; }
 body.ui-suggest #suggest { display: flex; }
+body.ui-start #start { display: flex; }
+#start { position: fixed; inset: 0; height: 72px; padding: 10px 12px; border-radius: 20px; }
+#startText { white-space: normal; line-height: 1.3; }
+.play-dot { width: 12px; height: 12px; margin-left: 6px; flex: none; border-radius: 50%; background: var(--warn); }
+body.lock-off #startLock { display: none; }
 
 #shield { position: fixed; inset: 0; }
 body.idle.ui-locked, body.idle.ui-locked * { cursor: none !important; }
@@ -144,7 +149,8 @@ body:not(.sources) .sources-only { display: none; }
   max-width: 80vw; text-align: center; z-index: 5;
 }
 #toast.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-body.ui-unlocked #toast, body.ui-menu #toast, body.ui-wait #toast, body.ui-suggest #toast { display: none; }
+body.ui-none #toast, body.ui-unlocked #toast, body.ui-menu #toast, body.ui-wait #toast, body.ui-suggest #toast, body.ui-start #toast { display: none; }
+body.lock-off #mini .warn::after { content: ''; }
 
 /* ---------- Focus button (suggest) ---------- */
 #suggest { position: fixed; inset: 0; padding: 10px; border-radius: 20px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35); }

@@ -6,6 +6,9 @@
   const IDLE_MS = 3000;
   const HOLD_MS = 1200;
   let S = {}; // latest state from the page script
+  // This page is loaded twice: as the full-window 'shield' (kid lock, Pick) and as the small 'pill' bars.
+  const ROLE = new URLSearchParams(location.search).get('role') || 'shield';
+  const MINE = ROLE === 'shield' ? ['locked', 'pick'] : ['start', 'unlocked', 'menu', 'wait', 'suggest'];
 
   const send = (cmd, extra) => parent.postMessage({ __fp: true, cmd, ...(extra || {}) }, '*');
 
@@ -59,6 +62,10 @@
   document.querySelectorAll('[data-hold]').forEach((btn) => {
     btn.addEventListener('pointerdown', (e) => {
       e.preventDefault();
+      if (S.lockStyle === 'tap') {
+        send(btn.dataset.hold);
+        return;
+      }
       cancelHold(false);
       try { btn.setPointerCapture(e.pointerId); } catch (_) {}
       const timer = setTimeout(() => {
@@ -90,7 +97,7 @@
     send('menu', { open: !body.classList.contains('ui-menu') });
   });
 
-  $('openOptions').addEventListener('click', () => chrome.runtime.openOptionsPage());
+  $('openOptions').addEventListener('click', () => chrome.runtime.sendMessage({ fp: 'open-options' }));
 
   $('diagCopy').addEventListener('click', () => copyDiag());
   $('diagClose').addEventListener('click', () => $('menu').classList.remove('diag'));
@@ -141,10 +148,17 @@
     if (!s || s.__fp !== 'state') return;
     S = s;
     body.className = body.className.replace(/\bui-\S+/g, '').trim();
-    body.classList.add('ui-' + s.ui);
+    body.classList.add('ui-' + (MINE.includes(s.ui) ? s.ui : 'none'));
     body.classList.toggle('has-controls', !!s.hasControls);
     body.classList.toggle('multi', !!s.multi);
     body.classList.toggle('remembered', !!s.remembered);
+    body.classList.toggle('lock-off', s.lockStyle === 'off');
+    document.querySelectorAll('[data-hold]').forEach((b) => {
+      const l = b.querySelector('.lbl');
+      if (l) l.textContent = (s.lockStyle === 'tap' ? '' : 'Hold: ') + b.dataset.verb.replace(/^./, (c) => (s.lockStyle === 'tap' ? c.toUpperCase() : c));
+    });
+    $('mini').querySelector('.warn').textContent = s.lockStyle === 'off' ? 'Focused' : 'Unlocked';
+    $('startText').textContent = s.lockStyle === 'off' ? 'Press play on the video.' : 'Press play on the video. The kid lock turns on by itself once it\u2019s playing.';
     body.classList.toggle('sources', s.ui === 'wait' && s.waitReason === 'sources');
 
     $('play').classList.toggle('paused', !!s.paused);
@@ -152,8 +166,6 @@
     $('mute').classList.toggle('muted', !!s.muted);
     $('mute').querySelector('.lbl').textContent = s.muted ? 'Muted' : 'Sound';
     $('fs').querySelector('.lbl').textContent = s.fullscreen ? 'Exit full' : 'Full screen';
-    $('t-autofix').classList.toggle('on', !!s.autofix);
-    $('t-silence').classList.toggle('on', !!s.silence);
     $('suggestLabel').textContent = s.suggestLabel || '';
     $('waitText').textContent = s.waitText || '';
 

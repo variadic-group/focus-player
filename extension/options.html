@@ -33,6 +33,16 @@
   <p class="sub">Settings. Everything here stays on this computer.</p>
 
   <section>
+    <h2>Kid lock</h2>
+    <p class="hint">While locked, taps on the video land on Focus Player instead of the website, so they can't open ads or links. It turns on by itself once the video is playing.</p>
+    <select id="lockStyle">
+      <option value="hold">Hold to unlock (recommended with kids): a 1-second press unlocks or exits</option>
+      <option value="tap">Tap to unlock: one tap unlocks or exits</option>
+      <option value="off">Off: just fill the tab, the player's own buttons stay usable</option>
+    </select>
+  </section>
+
+  <section>
     <div class="row">
       <label class="sw"><input type="checkbox" id="blockAds"> Block ads &amp; pop-ups</label>
       <p class="hint">Blocks well-known ad and pop-up networks everywhere. While Focus Player is active on a tab, it also closes pop-up tabs that tab tries to open (real links you click still open).</p>

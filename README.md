@@ -29,7 +29,8 @@ Focus Player is a small, dependency-free Chrome extension (Manifest V3). It work
 ## What it does
 
 - **Fills the tab with the video.** It finds the main player on the page, whether a normal video, an embedded player or one hidden inside web components, and hides everything else. Restoring is instant and leaves the page exactly as it was.
-- **Kid lock (on by default).** An invisible layer that belongs to the extension sits over the video. Taps land there and never reach the website. Unlocking and exiting take a 1.2-second press-and-hold.
+- **Kid lock that turns on by itself.** Until the video is actually playing, your clicks reach the player, so you can press its play button. Once it plays, an invisible layer that belongs to the extension covers the video. Taps land on that layer and never reach the website. Choose how unlocking works: **Hold** (a 1.2-second press, the default), **Tap**, or **Off** for plain theater mode.
+- **Keeps it playing.** If the page or the player pauses the video while it's locked, Focus Player presses play again. With Deep mode, it also starts a paused embedded player for you.
 - **Big, simple controls:** Play, Sound, Volume, Full screen and Reload. They hide themselves and the cursor after 3 seconds.
 - **Tells the game from an ad.** It skips standard ad sizes (300×250, 728×90, …) and ad-looking frames. It prefers TV-shaped, full-screen-capable, playing video. If nothing qualifies, it waits instead of filling the screen with an ad.
 - **Pick the video.** If it guesses wrong, tap the right player. That choice is remembered for the site.
@@ -39,7 +40,7 @@ Focus Player is a small, dependency-free Chrome extension (Manifest V3). It work
 - **Silences everything else.** Chat beeps, ad audio and notification pings are muted. The video you're watching keeps its sound.
 - **Blocks ads & pop-ups.** It blocks well-known ad and pop-up networks, turns off scripted pop-up windows, and closes pop-up tabs opened by a page you're watching. Real links you click still open.
 - **Per-site behaviour.** Each site can be **Off** (only when you ask), **Button** (a small "Focus video" button appears when a video shows up) or **Auto** (goes straight into focus).
-- **Diagnostics.** One button copies a short report you can paste into an issue.
+- **Diagnostics.** A link in the popup copies a short report you can paste into an issue.
 
 <p align="center">
   <img src="docs/popup.png" width="260" alt="Toolbar popup">
@@ -67,7 +68,12 @@ It also works in Edge, Brave, Vivaldi and other Chromium browsers (Chrome 116+).
 1. Open a page with a video.
 2. Click the toolbar icon, then **Focus the video**. Or just press **Alt+Shift+F**.
    You can do this before the stream loads. It waits and locks on when the video starts.
-3. Hand it over. Moving the mouse or tapping brings up the controls.
+3. If the video isn't playing yet, press its play button. A bar at the top says so, and the kid lock turns on by itself once the video plays.
+4. Hand it over. Moving the mouse or tapping brings up the controls.
+
+<p align="center"><img src="docs/start.png" width="640" alt="Press play, then the lock turns on by itself"></p>
+
+> **Why a press-and-hold?** While locked, a quick tap from a child shouldn't be able to unlock or exit. The hold is the one thing a toddler won't do by accident. If you don't need that, set **Kid lock → Tap** (one tap) or **Off** in the popup.
 
 ### Make a site effortless
 
@@ -89,9 +95,9 @@ In the toolbar popup, set the site to **Button** or **Auto**. Chrome will ask on
 |---|---|
 | **Change source** | Shows the page with a "Click a source" bar and locks on to whatever you choose |
 | **Pick the video myself** | Hover shows a green box, or a red one if it looks like an ad. The choice is remembered per site |
-| **Next video on page** | Cycles through the other players on the page |
-| **Auto-fix / Silence other sounds** | Quick toggles |
-| **Copy diagnostics** | For bug reports |
+| **Next player on this page** | Only for pages that show several video players at once. Chat boxes and ads are never counted. It doesn't follow links to other sources; use Change source for that |
+| **Reload the player** | Restarts just the video player, not the page. A tab you're casting keeps casting |
+| **All settings** | Kid lock style, Deep mode, sites, ad blocking |
 
 <p align="center">
   <img src="docs/change-source.png" width="45%" alt="Change source">
@@ -161,7 +167,10 @@ extension/
 ```
 
 - **Hiding the page:** it marks the chosen player and its ancestors, then uses one stylesheet to hide everything else (`visibility: hidden`) and pin the player full-screen. The page's own layout and scripts are untouched, so exiting is instant.
-- **Kid lock:** the controls live in an iframe served by the extension. Clicks inside an iframe are delivered to that iframe's document, not the page, so a page's "click anywhere to open an ad" handlers never fire.
+- **Kid lock:** the lock layer is an iframe served by the extension. Clicks inside an iframe are delivered to that iframe's document, not the page, so a page's "click anywhere to open an ad" handlers never fire.
+  - The layer is always full-window and is never resized. It just switches between catching taps and letting them through, because Chrome can briefly misroute taps into a frame that has just grown.
+  - The small bars you use while unlocked live in a second, separate frame.
+  - As a backstop, any tap that somehow lands on these frames is dropped before the page's own listeners see it.
 - **Freeze detection:**
   - Normal video: is `currentTime` advancing?
   - Embedded player with Deep mode: the same check, read from inside the frame.
@@ -203,7 +212,17 @@ python test/run_tests.py            # needs ffmpeg to generate the test clip/bee
 CHROME=/path/to/chrome python test/run_tests.py   # or use a specific Chrome
 ```
 
-The suite runs 42 checks covering ad avoidance, kid lock, Pick, Change source, the popup, Button/Auto sites, pop-up tab blocking, Deep-mode controls, stay-live, freeze recovery, sound silencing, diagnostics and the ad rules.
+The suite runs 55 checks covering:
+
+- ad avoidance and the start-then-lock flow, for click-to-play players with and without Deep mode
+- kid-lock styles
+- keeping playback going
+- Pick and Change source
+- the popup and Button/Auto sites
+- pop-up tab blocking, and making sure the Settings tab isn't treated as a pop-up
+- Deep-mode controls, stay-live and freeze recovery
+- sound silencing, and keeping chat boxes out of player detection
+- diagnostics and the ad rules
 
 ## Project report
 
@@ -211,7 +230,7 @@ Design goals, architecture, test coverage, known limits and roadmap: [docs/REPOR
 
 ## Contributing
 
-Issues and PRs are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). The most useful bug report is a diagnostics paste: Unlock → Tools → Copy diagnostics.
+Issues and PRs are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). The most useful bug report is a diagnostics paste: open the toolbar popup and click **Copy diagnostics**.
 
 ## License
 

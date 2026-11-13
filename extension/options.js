@@ -1,7 +1,8 @@
 const $ = (id) => document.getElementById(id);
 
 async function render() {
-  const s = await chrome.storage.local.get(['blockAds', 'silence', 'autofix', 'deep', 'siteModes', 'picks']);
+  const s = await chrome.storage.local.get(['blockAds', 'silence', 'autofix', 'deep', 'siteModes', 'picks', 'lockStyle']);
+  $('lockStyle').value = ['hold', 'tap', 'off'].includes(s.lockStyle) ? s.lockStyle : 'hold';
   const hasAll = await chrome.permissions.contains({ origins: ['<all_urls>'] });
   $('blockAds').checked = s.blockAds !== false;
   $('silence').checked = s.silence !== false;
@@ -48,6 +49,7 @@ async function render() {
   }
 }
 
+$('lockStyle').onchange = (e) => chrome.storage.local.set({ lockStyle: e.target.value });
 ['blockAds', 'silence', 'autofix'].forEach((k) => ($(k).onchange = (e) => chrome.storage.local.set({ [k]: e.target.checked })));
 
 $('deep').onchange = (e) => {

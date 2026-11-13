@@ -31,6 +31,17 @@
       <button data-v="auto" role="radio">Auto</button>
     </div>
     <p class="hint" id="siteHint"></p>
+    <p class="remember" id="rememberRow" hidden>Using the video you picked here · <button class="link" id="forget">Forget it</button></p>
+  </section>
+
+  <section>
+    <div class="label">Kid lock</div>
+    <div class="seg" id="lockStyle" role="radiogroup">
+      <button data-v="hold" role="radio">Hold</button>
+      <button data-v="tap" role="radio">Tap</button>
+      <button data-v="off" role="radio">Off</button>
+    </div>
+    <p class="hint" id="lockHint"></p>
   </section>
 
   <section class="toggles">
@@ -40,7 +51,7 @@
     <label class="tg"><span><b>Deep mode</b><small>Works inside embedded players. Asks for access to all sites</small></span><input type="checkbox" id="deep"><i></i></label>
   </section>
 
-  <footer><kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> focus · <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd> kid lock</footer>
+  <footer><kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> focus · <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd> lock · <button class="link" id="diag">Copy diagnostics</button></footer>
 
   <script src="popup.js"></script>
 </body>

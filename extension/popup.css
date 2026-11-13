@@ -1,6 +1,6 @@
 :root { --bg: #111419; --card: #1a1f27; --line: rgba(255, 255, 255, 0.08); --text: #f2f4f7; --muted: #9aa3b2; --accent: #2fd17a; --accent-ink: #062b16; }
 * { box-sizing: border-box; }
-html, body { margin: 0; }
+html, body { margin: 0; overflow-x: hidden; }
 body {
   width: 340px; padding: 14px; background: var(--bg); color: var(--text);
   font: 500 13px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -27,7 +27,7 @@ h1 { font-size: 15px; margin: 0; }
 .secondary { flex: 1; height: 36px; border-radius: 10px; background: var(--card); font-weight: 600; }
 .secondary:not(:disabled):hover { background: #232a34; }
 
-section { background: var(--card); border-radius: 12px; padding: 12px; margin-bottom: 10px; }
+section { background: var(--card); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; }
 .label { margin-bottom: 8px; color: var(--muted); }
 .label b { color: var(--text); }
 .seg { display: grid; grid-template-columns: repeat(3, 1fr); background: #0d1014; border-radius: 10px; padding: 3px; gap: 3px; }
@@ -48,5 +48,7 @@ section { background: var(--card); border-radius: 12px; padding: 12px; margin-bo
 .tg input:checked + i::after { transform: translateX(14px); }
 .tg input:focus-visible + i { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+.link { background: none; padding: 0; color: var(--accent); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+.remember { margin: 8px 0 0; color: var(--muted); font-size: 12px; }
 footer { color: var(--muted); font-size: 11.5px; text-align: center; margin-top: 4px; }
 kbd { font: inherit; background: var(--card); border-radius: 4px; padding: 0 4px; }

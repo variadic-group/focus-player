@@ -19,9 +19,10 @@ This takes about five minutes the first time. No technical knowledge needed.
 
 1. Open a page with a video and start it playing (or not; Focus Player can wait).
 2. Click the **Focus Player** icon → **Focus the video**. Shortcut: **Alt+Shift+F**.
-3. The video fills the tab. The **kid lock** is on: taps can't reach the website.
-4. Move the mouse or tap to see the buttons: Play, Sound, Volume, Full screen, Reload.
-5. To leave: **press and hold "Hold: exit"** for about a second. A quick tap won't do it, on purpose.
+3. The video fills the tab. If it isn't playing yet, a bar at the top says **Press play on the video**. Click the player's play button. Your click goes straight through, with no unlocking needed.
+4. Once the video plays, the **kid lock** turns on by itself: taps can't reach the website. If the page pauses the video, Focus Player presses play again.
+5. Move the mouse or tap to see the buttons: Play, Sound, Volume, Full screen, Reload.
+6. To leave: **press and hold "Hold: exit"** for about a second. A quick tap won't do it, on purpose, so your child can't exit by accident. Prefer one tap? Set **Kid lock → Tap** in the popup. Just want the video big with no lock? Choose **Off**.
 
 ## 3. Make your favourite sites one-tap
 
@@ -35,13 +36,14 @@ This takes about five minutes the first time. No technical knowledge needed.
 
 | Problem | Fix |
 |---|---|
-| It focused the wrong thing | Hold **unlock** → **Tools** → **Pick the video myself**, then tap the right player. It remembers. |
+| The video was paused when I focused | Press play on the video. You don't need to unlock first, because it stays unlocked until the video plays. With **Deep mode** on, it presses play for you. |
+| It focused the wrong thing | Hold **unlock** → **Tools** → **Pick the video myself**, then tap the right player. It remembers. To undo that, use the popup → **Forget it**. |
 | You want a different stream on the page | Hold **unlock** → **Tools** → **Change source**, then click the source on the page. It locks on by itself. |
 | The picture froze | It fixes itself within about 15–30 seconds, or tap **Reload**. |
 | Chat beeps or ads make noise | **Silence other sounds** is on by default. For chat boxes from other sites, turn on **Deep mode** in the popup. |
 | The player's own buttons don't respond | That's the kid lock. Hold **unlock**, use the player, then tap **Lock**. |
 | A site's video won't play at all | Turn off **Block ads & pop-ups** in the popup. Some sites refuse to play when ads are blocked. |
-| Anything else | Hold **unlock** → **Tools** → **Copy diagnostics**, and paste it into a GitHub issue. |
+| Anything else | Toolbar popup → **Copy diagnostics** (at the bottom), and paste it into a GitHub issue. |
 
 ## 5. Casting to a TV
 

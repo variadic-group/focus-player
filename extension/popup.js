@@ -15,6 +15,12 @@ async function getTab() {
 const call = (action) => chrome.runtime.sendMessage({ fp: 'popup', tabId: tab.id, action });
 const done = () => { if (!forcedTab) window.close(); };
 
+const LOCK_HINTS = {
+  hold: 'Hold to unlock: Unlock and Exit need a 1-second press, so a child tapping around can’t undo it.',
+  tap: 'Tap to unlock: one tap unlocks or exits. Taps on the video still never reach the website.',
+  off: 'No kid lock: the video fills the tab and the player’s own buttons stay usable.',
+};
+
 const SITE_HINTS = {
   off: 'Only when you press Focus or Alt+Shift+F.',
   suggest: 'A small “Focus video” button appears whenever a video shows up here.',
@@ -43,6 +49,7 @@ function render() {
   $('sources').disabled = m !== 'focus';
 
   $('host').textContent = info.host || 'this site';
+  $('rememberRow').hidden = !info.remembered;
   document.querySelectorAll('#siteMode button').forEach((b) => b.classList.toggle('on', b.dataset.v === info.siteMode));
   $('siteHint').textContent = SITE_HINTS[info.siteMode] || '';
 }
@@ -61,7 +68,8 @@ async function refresh() {
 }
 
 async function loadToggles() {
-  const s = await chrome.storage.local.get(['blockAds', 'silence', 'autofix', 'deep']);
+  const s = await chrome.storage.local.get(['blockAds', 'silence', 'autofix', 'deep', 'lockStyle']);
+  renderLock(['hold', 'tap', 'off'].includes(s.lockStyle) ? s.lockStyle : 'hold');
   const hasAll = await chrome.permissions.contains({ origins: ['<all_urls>'] });
   $('blockAds').checked = s.blockAds !== false;
   $('silence').checked = s.silence !== false;
@@ -76,7 +84,26 @@ $('primary').addEventListener('click', async () => {
 });
 $('pick').addEventListener('click', async () => { await call('pick'); done(); });
 $('sources').addEventListener('click', async () => { await call('sources'); done(); });
-$('settings').addEventListener('click', () => chrome.runtime.openOptionsPage());
+$('settings').addEventListener('click', () => chrome.runtime.sendMessage({ fp: 'open-options' }));
+$('forget').addEventListener('click', async () => { await call('forget'); refresh(); });
+$('diag').addEventListener('click', async () => {
+  const r = await call('diag');
+  const text = r && r.info && r.info.diag;
+  if (!text) return;
+  await navigator.clipboard.writeText(text).catch(() => {});
+  $('diag').textContent = 'Copied ✓';
+});
+
+function renderLock(v) {
+  document.querySelectorAll('#lockStyle button').forEach((b) => b.classList.toggle('on', b.dataset.v === v));
+  $('lockHint').textContent = LOCK_HINTS[v];
+}
+document.querySelectorAll('#lockStyle button').forEach((b) =>
+  b.addEventListener('click', () => {
+    chrome.storage.local.set({ lockStyle: b.dataset.v });
+    renderLock(b.dataset.v);
+  })
+);
 
 document.querySelectorAll('#siteMode button').forEach((b) =>
   b.addEventListener('click', () => {

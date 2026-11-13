@@ -27,6 +27,7 @@
   const AD_WORDS =
     /(^|[\/._\-?=&#\s])(ads?|adv|advert\w*|banner\w*|sponsor\w*|promo\w*|popunder|doubleclick|googlesyndication|adserver|adservice|taboola|outbrain|prebid)([\/._\-?=&#\s]|$)/;
   const PLAYER_WORDS = /(embed|player|stream|live|watch|video|hls|jwplayer|clappr|videojs|plyr)/;
+  const CHAT_WORDS = /(chat|comment|disqus|chatango|tlk\.io|shoutbox|minnit|cbox|tawk|crisp|intercom|livechat|discord)/;
 
   const PAGE_CSS = `
 html[data-fp-on] { background:#000 !important; overflow:hidden !important; }
@@ -89,19 +90,24 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
     userPaused: false,
     hinted: false,
     lastLiveJump: 0,
+    lastAutoPlay: 0,
+    startT: null,
+    moving: 0,
     lastDiff: null,
     lastVia: '',
   };
 
-  let settings = { deep: false, autofix: true, silence: true, blockAds: true, siteModes: {}, picks: {} };
+  // lockStyle: 'hold' (press-and-hold to unlock/exit) | 'tap' (one tap) | 'off' (no kid lock, theater mode only)
+  let settings = { deep: false, autofix: true, silence: true, blockAds: true, siteModes: {}, picks: {}, lockStyle: 'hold' };
   const normalize = () => {
     settings.autofix = settings.autofix !== false;
     settings.silence = settings.silence !== false;
     settings.blockAds = settings.blockAds !== false;
+    if (!['hold', 'tap', 'off'].includes(settings.lockStyle)) settings.lockStyle = 'hold';
     settings.siteModes = settings.siteModes || {};
   };
   const settingsReady = chrome.storage.local
-    .get(['deep', 'autofix', 'silence', 'blockAds', 'siteModes', 'picks'])
+    .get(['deep', 'autofix', 'silence', 'blockAds', 'siteModes', 'picks', 'lockStyle'])
     .then((s) => {
       settings = { ...settings, ...s };
       normalize();
@@ -183,7 +189,9 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
       if (el.loop && el.muted && share < 0.25) { s *= 0.3; info.reasons.push('looping-preview'); }
     }
     info.score = s;
-    info.ok = !info.ad;
+    if (CHAT_WORDS.test(src) || CHAT_WORDS.test(names)) { s *= 0.05; info.chat = true; info.reasons.push('chat-like'); }
+    if (el.tagName !== 'VIDEO' && ratio < 0.9) { info.chat = true; info.reasons.push('portrait'); }
+    info.ok = !info.ad && !info.chat;
     info.srcHost = hostOf(src);
     return info;
   }
@@ -250,8 +258,7 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
 
   // Tap-to-pick: what media element is under this point?
   function mediaAt(x, y) {
-    const f = state.overlay;
-    if (f) f.style.setProperty('pointer-events', 'none', 'important');
+    setOverlayClickable(false);
     try {
       const seen = new Set();
       const scan = (root) => {
@@ -281,7 +288,7 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
       }
       return el;
     } finally {
-      if (f) f.style.setProperty('pointer-events', 'auto', 'important');
+      setOverlayClickable(true);
     }
   }
 
@@ -399,6 +406,7 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
       else if (cmd === 'volup') { v.muted = false; v.volume = Math.min(1, Math.round((v.volume + 0.1) * 10) / 10); }
       else if (cmd === 'voldown') v.volume = Math.max(0, Math.round((v.volume - 0.1) * 10) / 10);
       else if (cmd === 'jumplive') jumpToLive(v);
+      else if (cmd === 'playonly' && v.paused) v.play()?.catch?.(() => {});
       return;
     }
     const a = mainAgent();
@@ -479,6 +487,7 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
 
   async function tick() {
     if (state.mode !== 'focus' || wd.busy) return;
+    if (state.starting) return; // start mode has its own faster check
     const now = Date.now();
 
     if (!state.target || !state.target.isConnected) {
@@ -495,14 +504,26 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
       bg({ fp: 'agents-refresh' });
     }
 
-    if (!settings.autofix || !state.locked || document.visibilityState !== 'visible' || now < wd.graceUntil) {
+    if (!state.locked || document.visibilityState !== 'visible') {
+      wd.stillSince = 0;
+      wd.lastT = null;
+      return;
+    }
+
+    // Keep it playing: if the page or the player pauses it (not you), press play again.
+    const pv = playbackView();
+    if (pv && pv.paused && !pv.ended && !wd.userPaused && pv.t >= 0.5 && now - wd.lastAutoPlay > 3000) {
+      wd.lastAutoPlay = now;
+      control('playonly');
+    }
+
+    if (!settings.autofix || now < wd.graceUntil) {
       wd.stillSince = 0;
       wd.lastT = null;
       return;
     }
 
     let moving = null;
-    const pv = playbackView();
     if (pv) {
       wd.lastVia = pv.via;
       if (pv.paused && wd.userPaused) { wd.stillSince = 0; wd.lastT = null; return; }
@@ -603,49 +624,102 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
     else pushState({ toast: why === 'auto' ? 'Picture froze. Restarting the player…' : 'Restarting the player…' });
   }
 
-  // ======================= overlay (extension iframe: taps never reach the page) =======================
-  function ensureOverlay() {
-    if (state.overlay && state.overlay.isConnected) return;
+  // ======================= overlay (extension iframes: taps never reach the page) =======================
+  // Two extension-owned frames:
+  //  - 'shield': always full-window and NEVER resized. It catches every tap while locked (and in Pick
+  //    mode) and is simply made click-through otherwise. Never resizing it matters: Chrome routes taps
+  //    into a cross-process frame by its last drawn size, so a frame that just grew can briefly let taps
+  //    fall through to the page.
+  //  - 'pill': the small bars you use while unlocked (Press play, Unlocked/Tools, Change source, Focus button).
+  const SHIELD_UIS = ['locked', 'pick'];
+  const PILL_UIS = ['start', 'unlocked', 'menu', 'wait', 'suggest'];
+  const frames = { shield: null, pill: null };
+  const ready = { shield: false, pill: false };
+
+  function makeFrame(role) {
     const f = document.createElement('iframe');
-    f.src = OVERLAY_URL;
+    f.src = OVERLAY_URL + '?role=' + role;
     f.setAttribute('allowtransparency', 'true');
     f.setAttribute('aria-label', 'Focus Player controls');
-    f.setAttribute('data-fp-overlay', '');
-    state.overlay = f;
+    f.setAttribute('data-fp-overlay', role);
+    return f;
+  }
+
+  function ensureOverlay() {
+    for (const role of ['shield', 'pill']) {
+      if (frames[role] && frames[role].isConnected) continue;
+      ready[role] = false; // messages wait until the frame says 'ready'
+      frames[role] = makeFrame(role);
+      document.documentElement.appendChild(frames[role]);
+    }
+    state.overlay = frames.shield;
     styleOverlay();
-    document.documentElement.appendChild(f);
   }
 
   function removeOverlay() {
-    state.overlay?.remove();
+    for (const role of ['shield', 'pill']) {
+      frames[role]?.remove();
+      frames[role] = null;
+      ready[role] = false;
+    }
     state.overlay = null;
   }
 
+  function setOverlayClickable(on) {
+    if (frames.shield) frames.shield.style.setProperty('pointer-events', on && SHIELD_UIS.includes(uiMode()) ? 'auto' : 'none', 'important');
+    if (frames.pill) frames.pill.style.setProperty('pointer-events', on && PILL_UIS.includes(uiMode()) ? 'auto' : 'none', 'important');
+  }
+
   function uiMode() {
-    if (state.mode === 'focus') return state.locked ? 'locked' : state.menuOpen ? 'menu' : 'unlocked';
+    if (state.mode === 'focus') {
+      if (state.menuOpen) return 'menu';
+      if (state.starting) return 'start';
+      return state.locked ? 'locked' : 'unlocked';
+    }
     return state.mode; // pick | wait | suggest
   }
 
   function styleOverlay() {
-    const f = state.overlay;
-    if (!f) return;
+    const ui = uiMode();
     const base = {
       position: 'fixed', border: '0', margin: '0', padding: '0', 'z-index': '2147483647',
       background: 'transparent', 'color-scheme': 'light', display: 'block', visibility: 'visible',
-      opacity: '1', 'max-width': 'none', 'max-height': 'none', 'pointer-events': 'auto',
-      transform: 'none', right: 'auto', bottom: 'auto', 'box-shadow': 'none',
+      opacity: '1', 'max-width': 'none', 'max-height': 'none', transform: 'none',
+      right: 'auto', bottom: 'auto', 'box-shadow': 'none',
     };
     const full = { top: '0', left: '0', width: '100vw', height: '100vh', 'border-radius': '0' };
-    const boxes = {
-      locked: full,
-      pick: full,
-      unlocked: { top: '12px', left: '12px', width: '360px', height: '64px', 'border-radius': '18px' },
-      suggest: { top: 'calc(100vh - 88px)', left: 'calc(100vw - 388px)', width: '368px', height: '68px', 'border-radius': '20px' },
-      menu: { top: '12px', left: '12px', width: '360px', height: 'min(560px, calc(100vh - 24px))', 'border-radius': '18px' },
-      wait: { top: '12px', left: 'calc(50vw - min(310px, 48vw))', width: 'min(620px, 96vw)', height: '72px', 'border-radius': '20px' },
-    };
-    const box = boxes[uiMode()] || full;
-    for (const [k, v] of Object.entries({ ...base, ...box })) f.style.setProperty(k, v, 'important');
+    if (frames.shield) {
+      const st = { ...base, ...full, 'pointer-events': SHIELD_UIS.includes(ui) ? 'auto' : 'none' };
+      for (const [k, v] of Object.entries(st)) frames.shield.style.setProperty(k, v, 'important');
+    }
+    if (frames.pill) {
+      const boxes = {
+        unlocked: { top: '12px', left: '12px', width: '360px', height: '64px', 'border-radius': '18px' },
+        start: { top: '12px', left: 'calc(50vw - min(330px, 48vw))', width: 'min(660px, 96vw)', height: '72px', 'border-radius': '20px' },
+        suggest: { top: 'calc(100vh - 88px)', left: 'calc(100vw - 388px)', width: '368px', height: '68px', 'border-radius': '20px' },
+        menu: { top: '12px', left: '12px', width: '360px', height: 'min(560px, calc(100vh - 24px))', 'border-radius': '18px' },
+        wait: { top: '12px', left: 'calc(50vw - min(310px, 48vw))', width: 'min(620px, 96vw)', height: '72px', 'border-radius': '20px' },
+      };
+      const on = PILL_UIS.includes(ui);
+      const st = { ...base, ...(boxes[ui] || boxes.unlocked), 'pointer-events': on ? 'auto' : 'none', display: on ? 'block' : 'none' };
+      for (const [k, v] of Object.entries(st)) frames.pill.style.setProperty(k, v, 'important');
+    }
+  }
+
+  // Second line of defence: a tap that lands on one of our frames before it can handle it
+  // (e.g. while it is still loading) is dropped before the page's own listeners can see it.
+  for (const type of ['click', 'dblclick', 'auxclick', 'mousedown', 'mouseup', 'pointerdown', 'pointerup', 'touchstart', 'touchend', 'contextmenu']) {
+    window.addEventListener(
+      type,
+      (e) => {
+        const t = e.target;
+        if (t && t.nodeType === 1 && t.hasAttribute('data-fp-overlay')) {
+          e.stopImmediatePropagation();
+          e.preventDefault();
+        }
+      },
+      true
+    );
   }
 
   function waitText() {
@@ -655,44 +729,45 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
   }
 
   function pushState(extra) {
-    const f = state.overlay;
-    if (!f || !f.contentWindow) return;
     const v = isVideo(state.target) ? state.target : null;
     const a = v ? null : mainAgent();
-    f.contentWindow.postMessage(
-      {
-        __fp: 'state',
-        ui: uiMode(),
-        locked: state.locked,
-        hasControls: !!(v || a),
-        paused: v ? v.paused : a ? a.paused : null,
-        muted: v ? v.muted : a ? a.muted : null,
-        multi: state.candidates.length > 1,
-        fullscreen: !!document.fullscreenElement,
-        autofix: settings.autofix,
-        deep: !!settings.deep,
-        remembered: !!(settings.picks && settings.picks[location.hostname]),
-        silence: settings.silence,
-        blockAds: settings.blockAds,
-        siteMode: siteMode(),
-        suggestLabel: state.suggestEl ? describe(state.suggestEl) : '',
-        origin: location.origin,
-        host: location.hostname,
-        waitReason: state.waitReason,
-        waitText: waitText(),
-        ...(extra || {}),
-      },
-      EXT_ORIGIN
-    );
+    const msg = {
+      __fp: 'state',
+      ui: uiMode(),
+      locked: state.locked,
+      hasControls: !!(v || a),
+      paused: v ? v.paused : a ? a.paused : null,
+      muted: v ? v.muted : a ? a.muted : null,
+      multi: state.candidates.length > 1,
+      fullscreen: !!document.fullscreenElement,
+      autofix: settings.autofix,
+      deep: !!settings.deep,
+      remembered: !!(settings.picks && settings.picks[location.hostname]),
+      silence: settings.silence,
+      lockStyle: settings.lockStyle,
+      blockAds: settings.blockAds,
+      siteMode: siteMode(),
+      suggestLabel: state.suggestEl ? describe(state.suggestEl) : '',
+      origin: location.origin,
+      host: location.hostname,
+      waitReason: state.waitReason,
+      waitText: waitText(),
+      ...(extra || {}),
+    };
+    for (const role of ['shield', 'pill']) {
+      const f = frames[role];
+      if (f && f.contentWindow && ready[role]) f.contentWindow.postMessage(msg, EXT_ORIGIN);
+    }
   }
 
   function onMessage(e) {
-    if (state.mode === 'off' || !state.overlay || e.source !== state.overlay.contentWindow) return;
-    if (e.origin !== EXT_ORIGIN) return;
+    if (state.mode === 'off') return;
+    const role = frames.shield && e.source === frames.shield.contentWindow ? 'shield' : frames.pill && e.source === frames.pill.contentWindow ? 'pill' : null;
+    if (!role || e.origin !== EXT_ORIGIN) return;
     const d = e.data;
     if (!d || d.__fp !== true) return;
     switch (d.cmd) {
-      case 'ready': pushState(); break;
+      case 'ready': ready[role] = true; pushState(); break;
       case 'play': case 'mute': case 'volup': case 'voldown': control(d.cmd); break;
       case 'fullscreen': toggleFullscreen(); break;
       case 'reload': if (state.mode === 'focus') reloadPlayer('manual'); break;
@@ -783,7 +858,9 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
   }
 
   function setLocked(v) {
+    clearInterval(state.startTimer);
     state.locked = !!v;
+    state.starting = false;
     state.menuOpen = false;
     styleOverlay();
     resetFreezeClock(state.locked ? GRACE_MS : 0);
@@ -813,7 +890,56 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
     bg({ fp: 'status', mode: state.mode });
   }
 
+  // ---------- start mode: wait for real playback, then lock ----------
+  async function startTick() {
+    if (state.mode !== 'focus' || !state.starting) return;
+    const now = Date.now();
+    const pv = playbackView();
+    if (pv) {
+      if (!pv.paused && wd.startT !== null && pv.t !== wd.startT) return finishStart();
+      if (pv.paused && !wd.userPaused && now - wd.lastAutoPlay > 3000) {
+        wd.lastAutoPlay = now;
+        control('playonly'); // works for normal videos and, with Deep mode, embedded ones
+      }
+      wd.startT = pv.t;
+      return;
+    }
+    if (wd.busy) return;
+    wd.busy = true;
+    try {
+      const r = await bg({ fp: 'frame-check' });
+      if (r && typeof r.diff === 'number') {
+        state.canSnapshot = true;
+        wd.moving = r.diff > 0.35 ? wd.moving + 1 : 0;
+        if (wd.moving >= 2) return finishStart();
+      } else if (r && r.error) state.canSnapshot = false;
+    } finally {
+      wd.busy = false;
+    }
+    // Can't see the picture at all: lock a few seconds after you click into the player.
+    if (state.canSnapshot === false && state.playerClickAt && now - state.playerClickAt > 6000) finishStart();
+  }
+
+  function finishStart() {
+    clearInterval(state.startTimer);
+    if (!state.starting) return;
+    state.starting = false;
+    state.locked = settings.lockStyle !== 'off';
+    styleOverlay();
+    resetFreezeClock(GRACE_MS);
+    pushState(state.locked ? { toast: 'Playing \u2014 kid lock on' } : null);
+  }
+
+  // Clicking into an embedded player moves focus into its frame; that's how we know you pressed play.
+  window.addEventListener('blur', () => {
+    setTimeout(() => {
+      if (state.mode === 'focus' && state.target && document.activeElement === state.target) state.playerClickAt = Date.now();
+    }, 0);
+  });
+
   function leaveFocus() {
+    clearInterval(state.startTimer);
+    state.starting = false;
     stopWatchdog();
     stopObserver();
     visuals(false);
@@ -824,7 +950,15 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
   function enterFocus(el, why) {
     stopWaitPoll();
     state.mode = 'focus';
-    state.locked = true;
+    // Don't lock yet: a player that isn't playing needs a click on its own play button.
+    // The kid lock switches on by itself as soon as the video is actually playing.
+    state.locked = false;
+    state.starting = settings.lockStyle !== 'off';
+    state.playerClickAt = 0;
+    state.canSnapshot = null;
+    wd.startT = null;
+    wd.moving = 0;
+    wd.userPaused = false;
     state.menuOpen = false;
     const good = (state.lastList || []).filter((i) => i.ok || i.el === el).map((i) => i.el);
     if (!good.includes(el)) good.unshift(el);
@@ -838,6 +972,11 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
     window.addEventListener('beforeunload', onBeforeUnload, true);
     startObserver();
     startWatchdog();
+    clearInterval(state.startTimer);
+    if (state.starting) {
+      state.startTimer = setInterval(startTick, 1000);
+      startTick();
+    }
     status();
     const toasts = {
       picked: 'Got it. I’ll use this video on this site from now on.',
@@ -979,6 +1118,7 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
     L.push(`Focus Player ${VERSION} diagnostics`);
     L.push(`Site: ${location.hostname}   Mode: ${state.mode}${state.mode === 'focus' ? (state.locked ? ' (locked)' : ' (unlocked)') : ''}`);
     L.push(`Window: ${innerWidth}x${innerHeight}   Chrome ${chrome_}`);
+    L.push(`Kid lock: ${settings.lockStyle}${state.starting ? ' (waiting for playback before locking)' : ''}`);
     L.push(`Settings: this site ${siteMode()} | auto-fix ${settings.autofix ? 'on' : 'off'} | silence ${settings.silence ? 'on' : 'off'} | block ads ${settings.blockAds ? 'on' : 'off'} | deep ${settings.deep ? 'on' : 'off'} | remembered pick ${settings.picks && settings.picks[location.hostname] ? 'yes' : 'no'}`);
     L.push('Players found when chosen (best first):');
     (state.lastList || []).slice(0, 8).forEach((i, n) => {
@@ -1048,6 +1188,8 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
       locked: state.locked,
       found,
       siteMode: siteMode(),
+      remembered: !!(settings.picks && settings.picks[location.hostname]),
+      lockStyle: settings.lockStyle,
       origin: location.origin,
       host: location.hostname,
     };
@@ -1079,6 +1221,15 @@ html[data-fp-on] [data-fp-ancestor] { ANCESTOR }`;
       case 'pick':
         showPick();
         break;
+      case 'diag':
+        return { ...info(), diag: diagnostics() };
+      case 'forget': {
+        const picks = { ...(settings.picks || {}) };
+        delete picks[location.hostname];
+        settings.picks = picks;
+        await chrome.storage.local.set({ picks });
+        break;
+      }
       case 'sources':
         showWait('sources');
         break;

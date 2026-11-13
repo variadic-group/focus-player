@@ -26,9 +26,10 @@ There's no build step and no dependencies. Nothing leaves the browser.
 | Area | Feature |
 |---|---|
 | Focus | Fill-the-tab player; picks the best candidate and avoids ad slots; waits for late players; re-finds swapped players; searches inside web components |
-| Kid lock | Extension-iframe shield; hold-to-unlock and hold-to-exit; auto-hiding controls and cursor; "Leave site?" guard against redirects |
+| Kid lock | Extension-iframe shield that engages once playback is detected (start mode lets your click reach the player's play button); Hold, Tap or Off styles; auto-hiding controls and cursor; "Leave site?" guard against redirects |
 | Controls | Play, Sound, Volume (native video, or embedded with Deep mode); Full screen; Reload; keyboard shortcuts |
 | Parent tools | Change source (auto-locks on to the new player); Pick the video (remembered per site); Next video; toggles; diagnostics |
+| Keep playing | Auto-resume when the page or player pauses the video while locked; auto-start paused embedded players (Deep mode) |
 | Reliability | Freeze watchdog (currentTime, Deep-mode reports, or 48×27 snapshot diff); jump-to-live, then restart, then back off; stay-live catch-up (>30 s behind) |
 | Sound | Mutes non-target media and swallows Web Audio pings: top frame always, other frames with Deep mode; the game keeps its sound |
 | Ads & pop-ups | Ad and pop-up network blocklist (declarativeNetRequest, 76 domains); scripted pop-up guard (window.open / scripted `_blank`); pop-up **tab** closer, with real link clicks allowed through |
@@ -40,7 +41,7 @@ There's no build step and no dependencies. Nothing leaves the browser.
 | File | Role |
 |---|---|
 | `content.js` | Top frame. Candidate scoring, mode machine (off → armed → suggest → focus / pick / wait), watchdog, diagnostics |
-| `overlay.*` | Extension-origin iframe: the shield, controls, parent tools, pick highlight, Focus button, waiting pill. It talks to `content.js` over postMessage, with source and origin checked |
+| `overlay.*` | Loaded as two extension-origin frames. The **shield** frame is full-window and never resized: kid lock, controls, Pick highlight. The **pill** frame holds the bars used while unlocked: Press play, Unlocked/Tools, Change source, Focus button. Both talk to `content.js` over postMessage, with source and origin checked |
 | `background.js` | Service worker. Runs actions; injects the MAIN-world pop-up guard and silencer; closes pop-up tabs; manages the ad ruleset; registers Button/Auto site scripts; takes freeze snapshots; relays Deep-mode messages. Tab state is kept in `storage.session` so it survives the worker sleeping |
 | `agent.js` | Deep mode only. Runs in sub-frames, reports the biggest video's state and carries out commands |
 | `popup.*`, `options.*` | Popup and settings UI |
@@ -48,8 +49,13 @@ There's no build step and no dependencies. Nothing leaves the browser.
 
 ## Testing
 
-`test/run_tests.py` drives real headless Chrome with the extension loaded against local test pages, including ad-only pages, swapped players, a noisy chat widget, a pop-under trap and a seekable "live" clip. **42 of 42 checks pass**:
+`test/run_tests.py` drives real headless Chrome with the extension loaded against local test pages, including ad-only pages, swapped players, a noisy chat widget, a pop-under trap and a seekable "live" clip. **55 of 55 checks pass**. They cover these areas:
 
+- start-then-lock, with and without Deep mode
+- keep playing
+- kid-lock styles
+- chat boxes excluded from player detection
+- the Settings tab isn't treated as a pop-up
 - ad avoidance
 - kid lock (taps never reach the page)
 - quick-tap-doesn't-unlock

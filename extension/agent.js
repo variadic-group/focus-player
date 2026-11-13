@@ -89,6 +89,9 @@
       case 'voldown':
         v.volume = Math.max(0, Math.round((v.volume - 0.1) * 10) / 10);
         break;
+      case 'playonly':
+        if (v.paused) v.play().catch(() => {});
+        break;
       case 'jumplive': {
         const lag = lagOf(v);
         if (lag != null && lag > 3) v.currentTime = v.seekable.end(v.seekable.length - 1) - 2;

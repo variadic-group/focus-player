@@ -75,11 +75,17 @@ async def main():
         async def act(page, a):
             await sw.evaluate("async ([a,u])=>{const [t]=await chrome.tabs.query({url:u}); await run(t,a);}", [a, page.url.split('?')[0] + '*'])
             await page.wait_for_timeout(800)
-        def ov(page):
-            fs = [f for f in page.frames if f.url.startswith('chrome-extension://') and 'overlay' in f.url]
+        def ov(page, role='shield'):
+            fs = [f for f in page.frames if f.url.startswith('chrome-extension://') and 'overlay' in f.url and f'role={role}' in f.url]
             return fs[0] if fs else None
         async def center(page, sel):
-            b = await (await ov(page).query_selector(sel)).bounding_box(); return b['x'] + b['width'] / 2, b['y'] + b['height'] / 2
+            for role in ('shield', 'pill'):
+                f = ov(page, role)
+                if not f: continue
+                el = await f.query_selector(sel)
+                b = el and await el.bounding_box()
+                if b and b['width'] > 0: return b['x'] + b['width'] / 2, b['y'] + b['height'] / 2
+            raise RuntimeError('not visible: ' + sel)
         async def hold(page, sel):
             await page.mouse.move(640, 300); await page.wait_for_timeout(200)
             x, y = await center(page, sel); await page.mouse.move(x, y); await page.mouse.down()
@@ -88,8 +94,20 @@ async def main():
             await page.mouse.move(640, 300); await page.wait_for_timeout(150)
             x, y = await center(page, sel); await page.mouse.click(x, y); await page.wait_for_timeout(600)
         async def ui(page):
-            o = ov(page)
-            return await o.evaluate("[...document.body.classList].filter(c=>c.startsWith('ui-'))[0]") if o else None
+            for role in ('shield', 'pill'):
+                o = ov(page, role)
+                if not o: continue
+                u = await o.evaluate("[...document.body.classList].filter(c=>c.startsWith('ui-'))[0]")
+                if u and u != 'ui-none': return u
+            return None
+        async def wait_ui(page, want, secs=12):
+            t0 = time.time()
+            while time.time() - t0 < secs:
+                try:
+                    if await ui(page) == want: return True
+                except Exception: pass
+                await page.wait_for_timeout(300)
+            return False
         async def tools(page):
             await hold(page, '[data-hold=unlock]')
             await page.mouse.click(*(await center(page, '#toolsBtn'))); await page.wait_for_timeout(500)
@@ -103,6 +121,7 @@ async def main():
         check('shows the waiting pill', await ui(pg) == 'ui-wait')
         await pg.wait_for_timeout(6000)
         check('locks on when the player appears', await pg.evaluate(TGT) == 'player', await pg.evaluate(TGT))
+        check('kid lock turns on by itself once the video is playing', await wait_ui(pg, 'ui-locked'))
         await hold(pg, '[data-hold=exit]')
         check('hold-to-exit restores the page', not await pg.evaluate(ON) and ov(pg) is None)
         await pg.close()
@@ -110,9 +129,11 @@ async def main():
         print('\n[2] Kid lock')
         pg = await ctx.new_page(); await pg.goto(BASE + '/freeze.html'); await pg.wait_for_timeout(800)
         await act(pg, 'toggle')
+        locked = await wait_ui(pg, 'ui-locked')
+        before = await pg.evaluate('__pageClicks')
         for xy in [(640, 360), (100, 100), (1200, 650)]: await pg.mouse.click(*xy)
         await pg.wait_for_timeout(300)
-        check('taps never reach the page', await pg.evaluate('__pageClicks') == 0)
+        check('taps never reach the page', locked and await pg.evaluate('__pageClicks') == before, f'locked={locked} clicks {before}->{await pg.evaluate("__pageClicks")}')
         check('window.open blocked', await pg.evaluate("window.open.toString().includes('Focus Player')"))
         await pg.mouse.move(640, 300); x, y = await center(pg, '[data-hold=unlock]'); await pg.mouse.click(x, y); await pg.wait_for_timeout(400)
         check('a quick tap does not unlock', await ui(pg) == 'ui-locked')
@@ -130,19 +151,21 @@ async def main():
         await pg.screenshot(path=os.path.join(ROOT, 'docs', 'pick.png'))
         await pg.mouse.click(*r); await pg.wait_for_timeout(800)
         check('tapped player is focused', await pg.evaluate(TGT) == 'realgame')
+        check('...and locks once it is playing (no hold needed)', await wait_ui(pg, 'ui-locked'))
         await act(pg, 'toggle'); await act(pg, 'toggle')
         check('remembered next time', await pg.evaluate(TGT) == 'realgame')
         await act(pg, 'toggle'); await pg.close()
 
         print('\n[4] Change source')
         pg = await ctx.new_page(); await pg.goto(BASE + '/sources.html'); await pg.wait_for_timeout(800)
-        await act(pg, 'toggle')
+        await act(pg, 'toggle'); await wait_ui(pg, 'ui-locked')
         await tools(pg)
         await pg.screenshot(path=os.path.join(ROOT, 'docs', 'tools.png'))
         await pg.mouse.click(*(await center(pg, '[data-cmd=sources]'))); await pg.wait_for_timeout(600)
         check('page comes back with the source pill', await ui(pg) == 'ui-wait' and not await pg.evaluate(ON))
         await pg.screenshot(path=os.path.join(ROOT, 'docs', 'change-source.png'))
         await pg.click('#s2'); await pg.wait_for_timeout(3500)
+        check('new source locks by itself once playing', await wait_ui(pg, 'ui-locked'))
         check('locks on to the new source (same player, new address)',
               await pg.evaluate(ON) and await pg.evaluate("document.querySelector('[data-fp-target]')?.getAttribute('src')") == 'player.html?s=2')
         await tools(pg); await pg.mouse.click(*(await center(pg, '[data-cmd=sources]'))); await pg.wait_for_timeout(600)
@@ -153,7 +176,7 @@ async def main():
         print('\n[5] Toolbar popup')
         pg = await ctx.new_page(); await pg.goto(BASE + '/sources.html'); await pg.wait_for_timeout(800)
         tid = await tab_id(pg)
-        pop = await ctx.new_page(); await pop.set_viewport_size({'width': 340, 'height': 620})
+        pop = await ctx.new_page(); await pop.set_viewport_size({'width': 340, 'height': 740})
         await pop.goto(f'chrome-extension://{ext_id}/popup.html?tab={tid}'); await pop.wait_for_timeout(1200)
         st = await pop.inner_text('#status')
         check('popup sees the video', st.startswith('Video found'), st)
@@ -182,6 +205,7 @@ async def main():
         await pg.bring_to_front()
         await tap(pg, '[data-cmd=focusNow]')
         check('tap Focus video -> focused', await pg.evaluate(ON) and await pg.evaluate(TGT) == 'player')
+        await wait_ui(pg, 'ui-locked')
         await hold(pg, '[data-hold=exit]'); await pg.wait_for_timeout(2600)
         check('after exit, the Focus button is back (one tap to return)', await ui(pg) == 'ui-suggest', await ui(pg))
         await tap(pg, '[data-cmd=dismiss]')
@@ -199,9 +223,11 @@ async def main():
         await storage({'deep': True})
         pg = await ctx.new_page(); await pg.goto(BASE + '/silence.html'); await pg.wait_for_timeout(2000)
         await act(pg, 'toggle'); await pg.wait_for_timeout(5000)
+        check('locks once the embedded video is playing', await wait_ui(pg, 'ui-locked'))
         emb = [f for f in pg.frames if f.url.endswith('pvideo.html')][0]
         chat = [f for f in pg.frames if f.url.endswith('chat.html')][0]
         check('picks the game, not the chat', await pg.evaluate(TGT) == 'embed')
+        check('chat box is not offered as a "next player"', not await ov(pg).evaluate("document.body.classList.contains('multi')"))
         check('Play/Volume shown for an embedded player', await ov(pg).evaluate("document.body.classList.contains('has-controls')"))
         check('pop-ups blocked inside the player frame', await emb.evaluate("window.open.toString().includes('Focus Player')"))
         check('site beep muted (top page)', await pg.evaluate("document.getElementById('sitebeep').muted"))
@@ -226,14 +252,59 @@ async def main():
         check('frozen embedded player restarts by itself', await pg.evaluate('__loads') > loads0, f'{time.time() - t0:.0f}s')
         await pg.evaluate("window.__freeze=false")
         await pg.wait_for_timeout(2000)
-        await tools(pg); await pg.mouse.click(*(await center(pg, '[data-cmd=diag]'))); await pg.wait_for_timeout(800)
-        diag = await ov(pg).evaluate("document.getElementById('diagText').value")
+        diag = await sw.evaluate("async (u)=>{const [t]=await chrome.tabs.query({url:u}); return (await runInTab(t.id,'diag')).diag}", pg.url.split('?')[0] + '*')
         check('diagnostics report', diag.startswith('Focus Player 2.') and 'Deep-mode frames reporting' in diag)
         print('     ' + diag.replace('\n', '\n     '))
         await act(pg, 'toggle'); await pg.wait_for_timeout(800)
         check('exit un-mutes the page', not await pg.evaluate("document.getElementById('sitebeep').muted"))
         await pg.close()
         await storage({'deep': False})
+
+        print('\n[10] Start mode without Deep mode: click play yourself, lock follows')
+        pg = await ctx.new_page(); await pg.goto(BASE + '/needsclick.html'); await pg.wait_for_timeout(800)
+        await act(pg, 'toggle')
+        check('starts unlocked with the "press play" bar', await ui(pg) == 'ui-start' and await pg.evaluate(ON))
+        await pg.screenshot(path=os.path.join(ROOT, 'docs', 'start.png'))
+        await pg.mouse.click(640, 400); await pg.wait_for_timeout(500)
+        check('your click reaches the player\'s play button (no hold, no unlock)', await pg.evaluate('__played') == 1)
+        check('kid lock turns on by itself once it is playing', await wait_ui(pg, 'ui-locked'))
+        print('\n[11] Settings tab is not mistaken for a pop-up')
+        await hold(pg, '[data-hold=unlock]'); await pg.mouse.click(*(await center(pg, '#toolsBtn'))); await pg.wait_for_timeout(400)
+        n0 = len(ctx.pages)
+        await pg.mouse.click(*(await center(pg, '#openOptions'))); await pg.wait_for_timeout(2000)
+        check('All settings opens and stays open', any('options.html' in p_.url for p_ in ctx.pages), f'{len(ctx.pages)} pages')
+        for p_ in ctx.pages:
+            if 'options.html' in p_.url: await p_.close()
+        await act(pg, 'toggle'); await pg.close()
+
+        print('\n[12] Deep mode keeps it playing')
+        await storage({'deep': True})
+        pg = await ctx.new_page(); await pg.goto(BASE + '/deep2.html'); await pg.wait_for_timeout(1500)
+        await act(pg, 'toggle')
+        emb2 = [f for f in pg.frames if f.url.endswith('pvideo2.html')][0]
+        check('a paused embedded player gets started for you', await wait_ui(pg, 'ui-locked', 15) and not await emb2.evaluate("document.getElementById('v').paused"))
+        await pg.evaluate('__pauseOnce=true'); await pg.wait_for_timeout(800)
+        t0 = time.time(); resumed = False
+        while time.time() - t0 < 12:
+            await pg.wait_for_timeout(500)
+            if not await emb2.evaluate("document.getElementById('v').paused"): resumed = True; break
+        check('if the player pauses by itself, it is resumed', resumed, f'{time.time() - t0:.1f}s')
+        await act(pg, 'toggle'); await pg.close()
+        await storage({'deep': False})
+
+        print('\n[13] Kid lock styles')
+        await storage({'lockStyle': 'tap'})
+        pg = await ctx.new_page(); await pg.goto(BASE + '/freeze.html'); await pg.wait_for_timeout(800)
+        await act(pg, 'toggle'); await wait_ui(pg, 'ui-locked')
+        await tap(pg, '[data-hold=unlock]')
+        check('Tap to unlock: one tap unlocks', await ui(pg) == 'ui-unlocked')
+        await act(pg, 'toggle'); await pg.close()
+        await storage({'lockStyle': 'off'})
+        pg = await ctx.new_page(); await pg.goto(BASE + '/freeze.html'); await pg.wait_for_timeout(800)
+        await act(pg, 'toggle'); await pg.wait_for_timeout(4000)
+        check('Lock off: fills the tab, never locks', await pg.evaluate(ON) and await ui(pg) == 'ui-unlocked')
+        await act(pg, 'toggle'); await pg.close()
+        await storage({'lockStyle': 'hold'})
 
         print('\n[9] Ad-network rules')
         on = await sw.evaluate("chrome.declarativeNetRequest.getEnabledRulesets()")

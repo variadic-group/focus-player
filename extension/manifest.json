@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Focus Player",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Watch any web video distraction-free: it fills the tab, the rest of the page disappears, a kid lock catches stray taps, and ads, pop-ups and stray sounds are blocked.",
   "minimum_chrome_version": "116",
   "permissions": [

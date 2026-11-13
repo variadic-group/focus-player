@@ -75,12 +75,9 @@
       <div id="menuList">
         <button class="item" data-cmd="sources"><b>Change source</b><small>Show the page, click another source, and it locks on by itself</small></button>
         <button class="item" data-cmd="pick"><b>Pick the video myself</b><small>Tap the right player; it's remembered for this site</small></button>
-        <button class="item multi-only" data-cmd="next"><b>Next video on page</b><small>Cycle through other players here</small></button>
-        <button class="item toggle" id="t-autofix" data-cmd="autofix"><b>Auto-fix frozen video</b><small>Jump to live, restart if stuck</small><i></i></button>
-        <button class="item toggle" id="t-silence" data-cmd="silence"><b>Silence other sounds</b><small>Mutes chat beeps and ad audio; the game keeps its sound</small><i></i></button>
-        <button class="item remembered-only" data-cmd="forget"><b>Forget remembered video</b><small>Go back to automatic picking on this site</small></button>
-        <button class="item" data-cmd="diag"><b>Copy diagnostics</b><small>A short report to paste if something isn't working</small></button>
-        <button class="item" id="openOptions"><b>All settings</b><small>Deep mode, Button/Auto sites, ad blocking, remembered videos</small></button>
+        <button class="item multi-only" data-cmd="next"><b>Next player on this page</b><small>If the page shows more than one video player at once</small></button>
+        <button class="item" data-cmd="reload"><b>Reload the player</b><small>Restarts just the video, not the page. A tab you're casting keeps casting</small></button>
+        <button class="item" id="openOptions"><b>All settings</b><small>Kid lock style, Deep mode, sites, ad blocking</small></button>
       </div>
       <div id="diagBox">
         <textarea id="diagText" readonly spellcheck="false"></textarea>
@@ -91,6 +88,14 @@
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- ===== Start: unlocked until the video is actually playing ===== -->
+  <div id="start" class="pill-bar">
+    <span class="play-dot"></span>
+    <span class="grow" id="startText">Press play on the video. The kid lock turns on by itself once it's playing.</span>
+    <button class="pill go" data-cmd="lock" id="startLock">Lock now</button>
+    <button class="pill" data-cmd="exit">Exit</button>
   </div>
 
   <!-- ===== Focus button shown on Button/Auto sites when a video appears ===== -->

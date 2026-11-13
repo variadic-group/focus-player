@@ -225,6 +225,7 @@ async function syncAdBlock() {
 // A tab opened by a page where Focus Player is active gets closed straight away,
 // unless you just clicked (or right-clicked) a real link that opens a new tab.
 const allowTabUntil = new Map();
+let allowOwnTabsUntil = 0; // our own Settings tab must never be mistaken for a pop-up
 
 chrome.tabs.onCreated.addListener(async (tab) => {
   const opener = tab.openerTabId;
@@ -232,6 +233,7 @@ chrome.tabs.onCreated.addListener(async (tab) => {
   if (!isActive(await getMode(opener))) return;
   const { blockAds } = await chrome.storage.local.get('blockAds');
   if (blockAds === false) return;
+  if (Date.now() < allowOwnTabsUntil) return;
   // The "you clicked a real link" note from the page can arrive a moment after the tab does.
   await new Promise((r) => setTimeout(r, 250));
   if ((allowTabUntil.get(opener) || 0) > Date.now()) {
@@ -292,6 +294,13 @@ chrome.storage.onChanged.addListener(async (ch, area) => {
 // ---------------------------------------------------------------- message hub
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg) return;
+
+  if (msg.fp === 'open-options') {
+    allowOwnTabsUntil = Date.now() + 4000;
+    chrome.runtime.openOptionsPage();
+    sendResponse({});
+    return;
+  }
 
   // From the toolbar popup (not a tab).
   if (msg.fp === 'popup') {
