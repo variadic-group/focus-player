@@ -49,6 +49,8 @@ Focus Player is a small, dependency-free Chrome extension (Manifest V3). It work
 
 ## Install
 
+> New to this? The step-by-step **[Getting started guide](docs/GETTING-STARTED.md)** walks through everything with no technical knowledge needed.
+
 Focus Player isn't in the Chrome Web Store yet. To install from source:
 
 1. Download this repo: **Code → Download ZIP**, then unzip it. Or `git clone https://github.com/variadic-group/focus-player`.
@@ -202,6 +204,10 @@ CHROME=/path/to/chrome python test/run_tests.py   # or use a specific Chrome
 ```
 
 The suite runs 42 checks covering ad avoidance, kid lock, Pick, Change source, the popup, Button/Auto sites, pop-up tab blocking, Deep-mode controls, stay-live, freeze recovery, sound silencing, diagnostics and the ad rules.
+
+## Project report
+
+Design goals, architecture, test coverage, known limits and roadmap: [docs/REPORT.md](docs/REPORT.md).
 
 ## Contributing
 
