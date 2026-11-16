@@ -5,7 +5,7 @@
 <p align="center"><b>Theater mode for every website.</b><br>
 One key makes any video fill the window. Speed, pop-out, Go live and pop-up blocking come with it, on every site.</p>
 
-<p align="center"><b><a href="https://chromewebstore.google.com/detail/llccfckhklelmbpljegfphphbjaamman">Add to Chrome</a></b> · <a href="https://www.youtube.com/watch?v=Nx-_VWGqsh0">Watch the 30-second demo</a></p>
+<p align="center"><b><a href="https://chromewebstore.google.com/detail/llccfckhklelmbpljegfphphbjaamman">Add to Chrome</a></b> · <a href="https://www.youtube.com/watch?v=Nx-_VWGqsh0">Watch the demo</a></p>
 
 <p align="center">
   <img src="docs/before.png" width="46%" alt="A cluttered page with a video">

@@ -1,30 +1,34 @@
-"""Steps comp.html through the film and writes one JPEG per frame (this repo's tests use Python's
-Playwright, so the film does too).
-   python3 capture.py <scenes.json> <outDir>
+"""Steps comp.html through the film and writes one JPEG per frame.
+   python3 capture.py <takesDir> <outDir> [seconds]
 """
-import json, os, sys
+import asyncio, json, os, sys
 from pathlib import Path
-from playwright.sync_api import sync_playwright
+from playwright.async_api import async_playwright
 
-config, out = sys.argv[1], sys.argv[2]
-film = json.load(open(config))
-base = Path(config).resolve().parent
-url = lambda f: (base / f).resolve().as_uri()
-for s in film['scenes']:
-    for k in ('img', 'side'):
-        if s.get(k):
-            s[k] = url(s[k])
-if film.get('icon'):
-    film['icon'] = url(film['icon'])
+HERE = Path(__file__).resolve().parent
+TAKES, OUT = Path(sys.argv[1]).resolve(), sys.argv[2]
+SECONDS = float(sys.argv[3]) if len(sys.argv) > 3 else 33.0
 FPS = 30
-os.makedirs(out, exist_ok=True)
-with sync_playwright() as p:
-    browser = p.chromium.launch(args=['--allow-file-access-from-files', '--force-color-profile=srgb'])
-    page = browser.new_page(viewport={'width': 1920, 'height': 1080}, device_scale_factor=1)
-    page.add_init_script(f'window.FILM = {json.dumps(film)};')
-    page.goto((Path(__file__).resolve().parent / 'comp.html').as_uri(), wait_until='load')
-    page.evaluate('() => window.ready')
-    for i in range(round(film['duration'] * FPS)):
-        page.evaluate('(t) => window.render(t)', i / FPS)
-        page.screenshot(path=os.path.join(out, f'f{i:04d}.jpg'), type='jpeg', quality=92)
-    browser.close()
+
+data = {'base': TAKES.as_uri(), 'icon': (HERE.parents[1] / 'extension' / 'icons' / '128.png').as_uri()}
+for j in TAKES.glob('*.json'):
+    data[j.stem] = json.load(open(j))
+from PIL import Image
+data['panel']['height'] = Image.open(TAKES / 'panel' / 'f0000.jpg').height
+
+
+async def main():
+    os.makedirs(OUT, exist_ok=True)
+    async with async_playwright() as p:
+        b = await p.chromium.launch(args=['--allow-file-access-from-files', '--force-color-profile=srgb'])
+        pg = await b.new_page(viewport={'width': 1920, 'height': 1080})
+        await pg.add_init_script(f'window.TAKES = {json.dumps(data)};')
+        await pg.goto((HERE / 'comp.html').as_uri())
+        await pg.wait_for_function('window.ready')
+        json.dump(await pg.evaluate('window.CUES'), open(os.path.join(OUT, 'cues.json'), 'w'))
+        for i in range(round(SECONDS * FPS)):
+            await pg.evaluate('(t) => window.render(t)', i / FPS)
+            await pg.screenshot(path=os.path.join(OUT, f'f{i:04d}.jpg'), type='jpeg', quality=92)
+        await b.close()
+
+asyncio.run(main())

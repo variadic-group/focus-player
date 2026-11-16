@@ -1,74 +1,186 @@
 <!doctype html>
-<meta charset="utf-8">
-<!-- The promo film, as one picture per moment: render(t) sets every element for time t, so
-     capture.mjs can step it frame by frame (the way Heirloom's ad films are made). The scenes,
-     colours and words come from scenes.json, passed in as window.FILM. -->
+<!-- The promo film, one frame per call: render(t) draws time t. capture.py steps it at 30 fps.
+     Footage is the real extension, recorded by record.py; this page frames it, moves the camera,
+     draws the cursor and sets the words. The cuts sit on the soundtrack's bars (108 bpm). -->
+<html><head><meta charset="utf-8">
 <style>
-  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; }
-  body { background: var(--bg); background-color: #0d1117; font-family: "Inter Display", "Inter", sans-serif; color: #fff; position: relative; }
-  .scene { position: absolute; inset: 0; opacity: 0; }
-  .card { display: grid; place-content: center; justify-items: center; gap: 30px; text-align: center; }
-  .card .name { display: flex; align-items: center; gap: 30px; font-weight: 700; font-size: 120px; letter-spacing: -0.03em; }
-  .card p { margin: 0; font-family: Inter, sans-serif; font-size: 44px; opacity: 0.88; }
-  .shot h1 { position: absolute; left: 140px; top: 96px; margin: 0; font-weight: 700; font-size: 84px; letter-spacing: -0.03em; }
-  .shot p { position: absolute; left: 140px; top: 206px; margin: 0; font-family: Inter, sans-serif; font-size: 36px; opacity: 0.86; }
-  .shot .frame { position: absolute; left: 260px; top: 300px; width: 1400px; border-radius: 22px; overflow: hidden; box-shadow: 0 40px 120px rgb(0 0 0 / 0.42), 0 0 0 1px rgb(255 255 255 / 0.12); transform-origin: 50% 0; }
-  .shot .frame img { display: block; width: 100%; }
-  .keys { position: absolute; left: 50%; top: 610px; transform: translateX(-50%); min-width: 560px; padding: 22px 34px; border-radius: 999px; background: #fff; color: #1f2328; font: 500 40px/1 "Inter", sans-serif; box-shadow: 0 24px 70px rgb(0 0 0 / 0.35); white-space: pre; }
-  .keys::after { content: ""; display: inline-block; width: 3px; height: 40px; margin-left: 4px; vertical-align: -6px; background: var(--accent); }
-  .caps { position: absolute; left: 50%; transform: translateX(-50%); display: flex; gap: 18px; }
-  .caps b { display: grid; place-items: center; min-width: 120px; height: 120px; padding: 0 30px; border-radius: 22px; background: #fff; color: #1f2328; font: 600 48px/1 "Inter", sans-serif; box-shadow: 0 10px 0 #c9ced6, 0 30px 70px rgb(0 0 0 / 0.4); }
-  .side { position: absolute; right: 150px; top: 270px; width: 400px; border-radius: 22px; box-shadow: 0 40px 120px rgb(0 0 0 / 0.5); }
-  .mark { display: inline-flex; align-items: center; justify-content: center; border-radius: 23%; background: var(--markbg); flex: none; box-shadow: 0 0 0 4px rgb(255 255 255 / 0.3); }
-  .mark i { display: block; border-radius: 50%; background: #fff; }
-  .mark img { width: 100%; height: 100%; }
-</style>
-<body>
+@font-face { font-family: Inter; src: local('Inter'), local('Inter Regular'); }
+:root { --accent: #3ddc84; --ink: #f3f6f9; --ink-2: #9fb0bf; }
+* { box-sizing: border-box; margin: 0; }
+html, body { width: 1920px; height: 1080px; overflow: hidden; background: #0b0f14; font-family: Inter, system-ui, sans-serif; color: var(--ink); }
+#bg { position: absolute; inset: 0; background:
+  radial-gradient(1200px 700px at 78% -10%, rgba(61,220,132,.16), transparent 60%),
+  radial-gradient(900px 600px at 0% 110%, rgba(80,110,255,.10), transparent 60%),
+  linear-gradient(170deg, #0d1218, #121a24); }
+#camera { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
+#win { position: absolute; left: 288px; top: 226px; width: 1344px; border-radius: 16px; overflow: hidden;
+  background: #1c222b; box-shadow: 0 40px 120px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.07); }
+#bar { height: 44px; display: flex; align-items: center; gap: 9px; padding: 0 18px; background: #1c222b; }
+#bar i { width: 12px; height: 12px; border-radius: 50%; background: #3a424d; }
+#url { margin-left: 18px; flex: 1; max-width: 560px; height: 28px; border-radius: 14px; background: #11161c; color: #8d99a6;
+  font-size: 15px; display: flex; align-items: center; padding: 0 16px; }
+#shot { display: block; width: 1344px; height: 756px; position: relative; overflow: hidden; background: #000; }
+#inner { position: absolute; left: 0; top: 0; width: 1344px; height: 756px; transform-origin: 0 0; }
+#frame { position: absolute; left: 0; top: 0; width: 1344px; height: 756px; }
+#cursor { position: absolute; width: 30px; height: 30px; left: 0; top: 0; pointer-events: none; filter: drop-shadow(0 2px 3px rgba(0,0,0,.5)); }
+#panel { position: absolute; top: 22px; right: 36px; width: 453px; border-radius: 14px; overflow: hidden;
+  box-shadow: 0 30px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.1); transform-origin: 100% 0; }
+#panel img { display: block; width: 100%; }
+#pcursor { position: absolute; width: 26px; height: 26px; pointer-events: none; filter: drop-shadow(0 2px 3px rgba(0,0,0,.5)); }
+#words { position: absolute; left: 288px; top: 54px; width: 1344px; }
+#head { font-size: 66px; font-weight: 700; letter-spacing: -0.025em; line-height: 1.05; }
+#sub { margin-top: 18px; font-size: 30px; color: var(--ink-2); letter-spacing: -0.005em; }
+#keys { position: absolute; left: 0; right: 0; top: 760px; display: flex; justify-content: center; gap: 18px; }
+.cap { min-width: 112px; height: 104px; padding: 0 30px; border-radius: 20px; background: linear-gradient(#fdfdfd, #e6e9ee);
+  color: #161b22; font-size: 40px; font-weight: 600; display: grid; place-items: center;
+  box-shadow: 0 8px 0 #b9c0ca, 0 22px 50px rgba(0,0,0,.45); }
+.cap.down { box-shadow: 0 2px 0 #b9c0ca, 0 10px 30px rgba(0,0,0,.45); }
+#card { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; padding-left: 288px; gap: 10px; }
+#card p { font-size: 92px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.12; }
+#card p.dim { color: #3d4855; }
+#end { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+#end img { width: 168px; height: 168px; }
+#end h1 { margin-top: 34px; font-size: 104px; letter-spacing: -0.035em; }
+#end p { margin-top: 12px; font-size: 38px; color: var(--ink-2); }
+#end .get { margin-top: 56px; padding: 22px 40px; border-radius: 999px; background: var(--accent); color: #07140d; font-size: 32px; font-weight: 700; }
+#end small { margin-top: 22px; font-size: 24px; color: #6e7b88; }
+#flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+.hide { display: none !important; }
+</style></head><body>
+<div id="bg"></div>
+<div id="camera">
+  <div id="win"><div id="bar"><i></i><i></i><i></i><div id="url">dailystream.example/live</div></div>
+    <div id="shot"><div id="inner"><img id="frame"><svg id="cursor" viewBox="0 0 24 24"><path d="M3 2l7.5 19 2.6-7.9L21 10.6z" fill="#fff" stroke="#111" stroke-width="1.4" stroke-linejoin="round"/></svg></div>
+      <div id="panel" class="hide"><img id="pframe"><svg id="pcursor" viewBox="0 0 24 24"><path d="M3 2l7.5 19 2.6-7.9L21 10.6z" fill="#fff" stroke="#111" stroke-width="1.4" stroke-linejoin="round"/></svg></div>
+    </div></div>
+</div>
+<div id="words"><div id="head"></div><div id="sub"></div></div>
+<div id="keys"></div>
+<div id="card" class="hide"></div>
+<div id="end" class="hide"><img id="icon"><h1>Focus Player</h1><p>Theater mode for every website.</p>
+  <div class="get">Free on the Chrome Web Store</div><small>No account. Nothing leaves your browser.</small></div>
+<div id="flash"></div>
 <script>
-const F = window.FILM;
-document.documentElement.style.setProperty("--bg", F.bg);
-document.documentElement.style.setProperty("--accent", F.accent);
-document.documentElement.style.setProperty("--markbg", F.markBg || F.accent);
-const mark = (size) => F.icon
-  ? `<span class="mark" style="width:${size}px;height:${size}px;background:none;box-shadow:none"><img src="${F.icon}"></span>`
-  : `<span class="mark" style="width:${size}px;height:${size}px;gap:${size * 0.06}px">${`<i style="width:${size * 0.2}px;height:${size * 0.2}px"></i>`.repeat(3)}</span>`;
-const els = F.scenes.map((s) => {
-  const el = document.createElement("section");
-  if (s.kind === "card") {
-    el.className = "scene card";
-    el.innerHTML = `<div class="name">${mark(150)}<span>${F.name}</span></div><p>${s.line}</p>`;
-  } else {
-    el.className = "scene shot";
-    el.innerHTML = `<h1>${s.head}</h1><p>${s.sub}</p><div class="frame"><img src="${s.img}"></div>${s.keys ? `<div class="keys" style="top:${s.keysTop || 610}px"></div>` : ""}${s.caps ? `<div class="caps" style="top:${s.keysTop || 610}px">${s.caps.map((c) => `<b>${c}</b>`).join("")}</div>` : ""}${s.side ? `<img class="side" src="${s.side}">` : ""}`;
+const B = 60 / 108 * 4;                 // one bar of the soundtrack, in seconds
+const $ = (id) => document.getElementById(id);
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const ease = (x) => { x = clamp(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const out = (x) => 1 - Math.pow(1 - clamp(x), 3);
+const lerp = (a, b, k) => a + (b - a) * k;
+const T = window.TAKES;                 // { base, news: {frames, marks, cursor}, ... } from capture.py
+const SC = 1344 / 1920;                 // footage px to window px
+
+// The edit. Each scene maps film time to a moment in a take: take time = t - shift.
+const at = (take, mark, filmT) => filmT - T[take].marks[mark];
+const S = [
+  { from: 0, to: 2 * B, take: 'news', shift: at('news', 'toggle', 2 * B), min: 1.0 },
+  { from: 2 * B, to: 4 * B, take: 'news', shift: at('news', 'toggle', 2 * B), pop: true },
+  { from: 4 * B, to: 6 * B, take: 'news', shift: at('news', 'faster1', 4 * B + 0.6), zoom: [960, 52] },
+  { from: 6 * B, to: 8 * B, take: 'live', shift: at('live', 'click0', 7 * B), zoom: [960, 52] },
+  { from: 8 * B, to: 10 * B, take: 'news', slow: [T.news.marks.toggle + 0.4, 0.3], panel: true },
+  { from: 10 * B, to: 12 * B, card: true },
+  { from: 12 * B, to: 99, end: true },
+];
+const WORDS = [
+  [0.15, 'You came for the video.', ''],
+  [1.9, 'You came for the video.', 'Not the pop-ups, the ads and the chat around it.'],
+  [2 * B, 'One key. Just the video.', 'Alt+Shift+F on any site. Press it again and the page is back.'],
+  [4 * B, 'Faster or slower, on any player.', 'From the keyboard or the bar on top. Remembered for each site.'],
+  [6 * B, 'Fell behind on a live stream?', ''],
+  [7 * B, 'One click, back to live.', 'Focus Player can tell when a stream lags, and catches it up.'],
+  [8 * B, 'Ads and pop-ups, kept away.', 'Pop-up tabs blocked, other sounds muted, stuck streams restarted.'],
+];
+const CARD = [[10 * B + 0.1, 'No account.'], [10 * B + 0.1 + B / 2, 'No tracking.'], [11 * B, 'Nothing leaves your browser.'], [11 * B + B / 2, 'Free, with the code in public.']];
+const KEYS = [['Alt', 1.5 * B], ['Shift', 1.5 * B + B / 8], ['F', 1.5 * B + B / 4]];
+
+$('icon').src = T.icon;
+// The sounds that go with the pictures, for build.py: [time, file, volume].
+const shift = (i) => S[i].shift;
+window.CUES = [
+  ...KEYS.map(([, kt]) => [kt, 'impactSoft_medium_001.ogg', 0.45]),
+  [2 * B, 'drop_001.ogg', 0.5],
+  ...['faster1', 'faster2', 'faster3'].map((m) => [T.news.marks[m] + shift(2), 'click_003.ogg', 0.3]).filter(([x]) => x < 6 * B),
+  [T.live.marks.click0 + shift(3), 'click_003.ogg', 0.45],
+  ...Object.values(T.panel.marks).map((m) => [8 * B + 0.2 + m, 'click_003.ogg', 0.35]),
+  ...[4, 6, 8, 10].map((b) => [b * B - 0.12, 'card-slide-1.ogg', 0.22]),
+  [12 * B + 0.05, 'impactBell_heavy_000.ogg', 0.3],
+];
+$('keys').innerHTML = KEYS.map(([k]) => `<div class="cap">${k}</div>`).join('');
+const pad = (n) => String(n).padStart(4, '0');
+const frameOf = (take, tt) => `${T.base}/${take}/f${pad(clamp(Math.round(tt * 30), 0, T[take].frames - 1))}.jpg`;
+function cursorAt(take, tt) {
+  const c = T[take].cursor; if (!c.length || tt < c[0][0]) return null;
+  let i = 0; while (i + 1 < c.length && c[i + 1][0] <= tt) i++;
+  return c[i];
+}
+async function load(img, src) { if (img.getAttribute('src') !== src) { img.src = src; await img.decode().catch(() => {}); } }
+
+window.render = async (t) => {
+  const s = S.find((x) => t >= x.from && t < x.to) || S[S.length - 1];
+  const film = !s.card && !s.end;
+  $('camera').classList.toggle('hide', !film);
+  $('words').classList.toggle('hide', !film);
+  $('card').classList.toggle('hide', !s.card);
+  $('end').classList.toggle('hide', !s.end);
+  $('flash').style.opacity = 0;
+
+  if (film) {
+    const tt = Math.max(s.min || 0, s.slow ? s.slow[0] + (t - s.from) * s.slow[1] : t - s.shift);
+    await load($('frame'), frameOf(s.take, tt));
+    $('url').textContent = s.take === 'live' ? 'dailystream.example/live' : 'dailystream.example/coast';
+    const c = s.slow ? null : cursorAt(s.take, tt);
+    $('cursor').style.display = c ? 'block' : 'none';
+    if (c) $('cursor').style.transform = `translate(${c[1] * SC - 6}px, ${c[2] * SC - 3}px)`;
+    // the camera: a slow push in, a pop on the cut into theater mode
+    let k = 1;
+    const local = t - s.from;
+    if (s.from === 0) k = lerp(1, 1.03, local / (2 * B));
+    if (s.pop) { k = lerp(1.06, 1, out(local / 0.5)); $('flash').style.opacity = 0.18 * (1 - out(local / 0.25)); }
+    $('camera').style.transform = `translate(${960 - 960 * k}px, ${626 - 626 * k}px) scale(${k})`;
+    // and inside the window, a move in on the bar on top
+    let z = 0;
+    if (s.zoom) z = ease((local - 0.15) / 0.7) * (1 - ease((local - (2 * B - 0.55)) / 0.5));
+    const zk = lerp(1, 1.9, z), fx = s.zoom ? s.zoom[0] * SC : 0, fy = s.zoom ? s.zoom[1] * SC : 0;
+    $('inner').style.transform = `translate(${(672 - fx * zk) * z}px, 0px) scale(${zk})`;
+    $('panel').classList.toggle('hide', !s.panel);
+    if (s.panel) {
+      const pk = out((local - 0.25) / 0.45);
+      $('panel').style.transform = `translateX(${(1 - pk) * 520}px) scale(${700 / T.panel.height})`;
+      const pt = local - 0.2;
+      await load($('pframe'), frameOf('panel', pt));
+      const pc = cursorAt('panel', pt);
+      $('pcursor').style.display = pc && pk > 0.9 ? 'block' : 'none';
+      if (pc) $('pcursor').style.transform = `translate(${pc[1] - 5}px, ${pc[2] - 3}px)`;
+      $('frame').style.filter = 'brightness(.8)';
+    } else $('frame').style.filter = '';
+    const w = [...WORDS].reverse().find((x) => t >= x[0]);
+    $('head').textContent = w ? w[1] : ''; $('sub').textContent = w ? w[2] : '';
+    const since = w ? t - w[0] : 0;
+    const fresh = w && (WORDS.findIndex((x) => x === w) === 0 || WORDS[WORDS.indexOf(w) - 1][1] !== w[1]);
+    $('head').style.opacity = fresh ? out(since / 0.35) : 1;
+    $('head').style.transform = fresh ? `translateY(${(1 - out(since / 0.45)) * 18}px)` : 'none';
+    $('sub').style.opacity = out((since - 0.15) / 0.4);
   }
-  document.body.append(el);
-  return el;
-});
-const ease = (x) => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
-window.render = (t) => {
-  F.scenes.forEach((s, i) => {
-    const el = els[i], start = s.at, end = i + 1 < F.scenes.length ? F.scenes[i + 1].at : F.duration;
-    const inn = ease((t - start) / 0.45), out = i + 1 < F.scenes.length ? 1 - ease((t - end + 0.05) / 0.3) : 1;
-    const shown = t >= start - 0.01 && t < end + 0.35;
-    el.style.opacity = shown ? Math.min(inn, out) : 0;
-    el.style.transform = `translateY(${(1 - inn) * 48}px)`;
-    const frame = el.querySelector(".frame");
-    if (frame) frame.style.transform = `translateY(${(1 - ease((t - start - 0.1) / 0.6)) * 80}px) scale(${1 + 0.035 * Math.max(0, t - start) / (end - start)})`;
-    el.querySelectorAll(".caps b").forEach((b, k) => {
-      const shown = ease((t - start - s.typeAt - k * s.typeStep) / 0.18);
-      b.style.opacity = shown;
-      b.style.transform = `translateY(${(1 - shown) * 30}px)`;
-    });
-    const side = el.querySelector(".side");
-    if (side) { const shown = ease((t - start - 0.6) / 0.5); side.style.opacity = shown; side.style.transform = `translateX(${(1 - shown) * 80}px)`; }
-    const keys = el.querySelector(".keys");
-    if (keys) {
-      const n = Math.max(0, Math.floor((t - start - s.typeAt) / s.typeStep) + 1);
-      keys.textContent = s.keys.slice(0, t - start < s.typeAt ? 0 : n);
-      keys.style.opacity = t - start < s.typeAt - 0.25 ? 0 : 1;
-    }
+  // the keys, pressed on the beat before the cut
+  const caps = [...document.querySelectorAll('.cap')];
+  KEYS.forEach(([, kt], i) => {
+    const el = caps[i], a = clamp((t - kt) / 0.18), gone = clamp((t - (2 * B + 0.35)) / 0.25);
+    el.style.opacity = Math.min(a, 1 - gone);
+    el.style.transform = `translateY(${(1 - out(a)) * 30}px) scale(${lerp(0.9, 1, out(a))})`;
+    el.classList.toggle('down', t >= 2 * B - 0.12 && t < 2 * B + 0.2);
   });
-  if (t > F.duration - 0.6) document.body.style.opacity = 1 - ease((t - (F.duration - 0.6)) / 0.6) * 0.0;
+  if (s.card) {
+    $('card').innerHTML = CARD.map(([ct, line], i) => {
+      const a = out((t - ct) / 0.35), dim = i < CARD.length - 1 && t >= CARD[i + 1][0];
+      return `<p class="${dim ? 'dim' : ''}" style="opacity:${a};transform:translateY(${(1 - a) * 24}px)">${line}</p>`;
+    }).join('');
+  }
+  if (s.end) {
+    const l = t - s.from;
+    const kids = [...$('end').children];
+    kids.forEach((el, i) => { const a = out((l - i * 0.12) / 0.5); el.style.opacity = a; el.style.transform = `translateY(${(1 - a) * 26}px)`; });
+    $('end').style.opacity = 1 - clamp((t - 32.4) / 0.6);
+  }
 };
-window.ready = Promise.all([...document.images].map((i) => i.decode().catch(() => {}))).then(() => document.fonts.ready);
-</script>
+window.ready = true;
+</script></body></html>

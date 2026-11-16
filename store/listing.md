@@ -13,7 +13,7 @@ Everything the Developer Dashboard asks for, ready to paste.
 Focus Player: Theater mode for any video
 
 **Summary** (132 characters max)
-Theater mode for every website. One key fills the window with any video. Speed, pop-out, Go live and pop-up blocking built in.
+One key turns the video on any website into theater mode. Speed, pop-out, back-to-live and pop-up blocking built in. Free.
 
 **Category**
 Functionality & UI. (Alternative: Entertainment.)
@@ -23,36 +23,43 @@ English
 
 ## Description
 
-Theater mode for every website.
+Plain text: the store shows it as typed.
 
-Press Alt+Shift+F on any page with a video, and the video fills the window. Comments, sidebars, banners and autoplay clutter disappear. Press it again, and the page is back exactly as it was.
+```
+You came for the video, not the page around it.
 
-The things people actually reach for while watching come built in, on every site:
+Press Alt+Shift+F on any website and the video fills the window: no comments, sidebars, cookie bars or autoplaying extras. Press it again and the page is back exactly as it was. It's the site's own player, with nothing else around it.
 
-- **Playback speed:** 0.25× to 4×, from the keyboard or the popup, remembered for each site.
-- **Picture-in-picture:** pop any video out into a floating window and keep working.
-- **Go live:** when a live stream drifts behind, one click jumps back to the live edge.
-- **Recover stalled streams:** if a playing live stream gets stuck, Focus Player catches up and, if needed, restarts the player for you. A paused video is always left alone.
-- **Block ads & pop-ups:** blocks well-known ad and pop-up networks, and stops the "click anywhere" pop-up tabs while you watch.
-- **Mute everything else:** autoplay ads and chat pings go quiet. Your video keeps its sound.
-- **Zoom to fill:** crops the black bars on ultrawide and tall screens.
-- **Your sites, your way:** set a site to Button (a small Theater mode button appears when a video does) or Always (goes straight in).
-- **Pick the video:** if a page has several players, click the one you want. It's remembered for that site.
-- **Cast-friendly:** cast the tab, and the TV gets just the video.
+WHILE YOU WATCH
+• Speed: 0.25× to 4×, from the keyboard or the bar on top, remembered for each site.
+• Back to live: when a live stream falls behind, one click jumps to the live edge. If a stream freezes, Focus Player catches it up, and restarts the player if it has to. A paused video is always left alone.
+• Pop out: picture-in-picture for any video, so it floats while you work.
+• Zoom to fill: crop the black bars on ultrawide and tall screens.
+• Pick the video: if a page has more than one, point at the one you want. It's remembered for that site.
+• Cast-friendly: cast the tab and the TV gets just the video.
 
-It works with ordinary web players and with players embedded from other sites. It's private by design: there's no account, no tracking, no remote code, and nothing leaves your browser.
+KEPT AWAY WHILE YOU WATCH
+• Ads and pop-ups: well-known ad and pop-up networks are blocked, and "click anywhere" pop-up tabs are stopped.
+• Other sounds: autoplay ads and chat pings go quiet. Your video keeps its sound.
 
-**Shortcuts**
+YOUR SITES, YOUR WAY
+Leave a site Off and theater mode waits for you to ask. Set it to Button and a small Theater mode button appears when a video does, or to Always and it goes straight in.
 
-| Keys | Action |
-|---|---|
-| Alt+Shift+F | Theater mode |
-| Alt+Shift+P | Picture-in-picture |
-| Alt+Shift+. | Faster |
-| Alt+Shift+, | Slower |
-| Esc | Exit theater mode |
+Most sites play their video inside a player from another site. One switch, "Control embedded players", lets speed, pop-out, back-to-live and muting work there too; Chrome asks you before it's on.
 
-Open source (MIT): https://github.com/variadic-group/focus-player
+SHORTCUTS (Option instead of Alt on a Mac)
+Alt+Shift+F  theater mode on and off
+Alt+Shift+P  pop out
+Alt+Shift+.  faster
+Alt+Shift+,  slower
+Esc  leave theater mode
+Change them at chrome://extensions/shortcuts
+
+PRIVATE BY DESIGN
+No account, no tracking, no remote code. Nothing leaves your browser. The code is public: github.com/variadic-group/focus-player
+
+Made by Variadic Group. Questions and ideas: hello@variadicgroup.com
+```
 
 ## Single purpose
 
@@ -85,7 +92,7 @@ Focus Player makes the video on the current web page easier to watch: it shows t
 | Screenshots 1280×800 | `store/screenshot-1.png` … `screenshot-5.png` |
 | Small promo tile 440×280 | `store/promo-small.png` |
 | Marquee 1400×560 | `store/promo-marquee.png` |
-| Promo video 1920×1080, 29 s (upload to YouTube as unlisted, paste the link) | `store/promo-film.mp4`, thumbnail `store/promo-film-thumbnail.jpg`; rebuild with `python3 store/video/build.py store/video/scenes.json store/promo-film.mp4` |
+| Promo video 1920×1080, 33 s: the real extension, recorded (upload to YouTube, paste the link in Global promo video) | `store/promo-film.mp4`, thumbnail `store/promo-film-thumbnail.jpg`; rebuild with `python3 store/video/build.py store/promo-film.mp4` (it records fresh footage first) |
 | GitHub social preview 1280×640 | `store/social-preview.png` |
 
-The promo film's music is "Happy Beats Business Moves Vol. 11" by Sascha Ende (ende.app, CC BY 4.0, credit optional); its sounds are Kenney's (CC0).
+The promo film's soundtrack is original, written by `store/video/music.py` and rendered with the FluidR3 General MIDI soundfont (MIT licence); its sounds are Kenney's (CC0). The show in the demo player is generated too (`store/video/stage/scene.html`).
