@@ -2,6 +2,11 @@
 
 Everything the Developer Dashboard asks for, ready to paste.
 
+## Live
+
+- Store: https://chromewebstore.google.com/detail/llccfckhklelmbpljegfphphbjaamman (item ID `llccfckhklelmbpljegfphphbjaamman`)
+- Demo on YouTube: https://www.youtube.com/watch?v=Nx-_VWGqsh0 (paste it in **Global promo video**)
+
 ## Store item
 
 **Name**

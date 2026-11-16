@@ -5,6 +5,8 @@
 <p align="center"><b>Theater mode for every website.</b><br>
 One key makes any video fill the window. Speed, pop-out, Go live and pop-up blocking come with it, on every site.</p>
 
+<p align="center"><b><a href="https://chromewebstore.google.com/detail/llccfckhklelmbpljegfphphbjaamman">Add to Chrome</a></b> · <a href="https://www.youtube.com/watch?v=Nx-_VWGqsh0">Watch the 30-second demo</a></p>
+
 <p align="center">
   <img src="docs/before.png" width="46%" alt="A cluttered page with a video">
   &nbsp;→&nbsp;
@@ -56,7 +58,9 @@ Focus Player brings them to every site, behind one shortcut, without getting in 
 
 ## Install
 
-From source, until the Chrome Web Store listing is live:
+[Add Focus Player to Chrome](https://chromewebstore.google.com/detail/llccfckhklelmbpljegfphphbjaamman) from the Chrome Web Store, then pin it to the toolbar. Updates arrive on their own.
+
+Or from a release:
 
 1. Download the latest **`focus-player-x.y.z.zip`** from [Releases](https://github.com/variadic-group/focus-player/releases) and unzip it.
 2. Open `chrome://extensions` and turn on **Developer mode**.
